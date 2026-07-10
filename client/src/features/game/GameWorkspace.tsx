@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { LogOut } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
+import type { AuthPrincipal } from '../../../../shared/types/auth'
 import type {
   AIApproveResponse,
   AIGenerateResponse,
@@ -60,8 +62,10 @@ import {
   type MapLayerSetting,
 } from './map-layers'
 import { useRealtimeGame } from './useRealtimeGame'
+import { TableAccessControl } from '../auth/TableAccessControl'
+import { authHeaders } from '../auth/session-storage'
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api'
+const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 const API_ORIGIN = API_URL.replace(/\/api\/?$/, '')
 
 const AI_PURPOSE_OPTIONS: Array<{
@@ -82,9 +86,17 @@ const DEFAULT_AUDIO_TRANSITION_MS = 1200
 
 type GameWorkspaceProps = {
   role: ClientRole
+  accessToken: string
+  principal: AuthPrincipal
+  onLogout: () => void | Promise<void>
 }
 
-export function GameWorkspace({ role }: GameWorkspaceProps) {
+export function GameWorkspace({
+  role,
+  accessToken,
+  principal,
+  onLogout,
+}: GameWorkspaceProps) {
   const {
     connected,
     connectionLabel,
@@ -108,7 +120,13 @@ export function GameWorkspace({ role }: GameWorkspaceProps) {
     updateLighting,
     updateVision,
     visionHistory,
-  } = useRealtimeGame(role)
+  } = useRealtimeGame(
+    role,
+    accessToken,
+    principal.campaignId,
+    principal.sessionId,
+    onLogout,
+  )
   const [draftNarrative, setDraftNarrative] = useState('')
   const [diceFormula, setDiceFormula] = useState('d20')
   const [rollVisibility, setRollVisibility] =
@@ -1378,11 +1396,28 @@ export function GameWorkspace({ role }: GameWorkspaceProps) {
           <span className="eyebrow">DM Interactive Table</span>
           <h1>{displayTitle}</h1>
         </div>
-        <nav className="topbar__nav" aria-label="Vistas principales">
-          <NavLink to="/dm">DM</NavLink>
-          <NavLink to="/display">Display</NavLink>
-          <NavLink to="/player">Jugador</NavLink>
-        </nav>
+        <div className="topbar__actions">
+          <nav className="topbar__nav" aria-label="Vistas principales">
+            <NavLink to="/dm">DM</NavLink>
+            <NavLink to="/display">Display</NavLink>
+            <NavLink to="/player">Jugador</NavLink>
+          </nav>
+          {isDm ? (
+            <TableAccessControl
+              campaignId={state?.campaignId ?? principal.campaignId}
+              sessionId={state?.sessionId ?? principal.sessionId}
+            />
+          ) : null}
+          <button
+            type="button"
+            className="icon-button"
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+            onClick={() => void onLogout()}
+          >
+            <LogOut size={18} />
+          </button>
+        </div>
       </header>
 
       <section className="workspace">
@@ -1390,8 +1425,13 @@ export function GameWorkspace({ role }: GameWorkspaceProps) {
           <div className="panel-section">
             <span className={`status-dot ${connected ? 'is-online' : ''}`} />
             <div>
-              <strong>{connectionLabel}</strong>
+              <strong data-testid="connection-status">{connectionLabel}</strong>
               <p>{state?.scene?.name ?? 'Esperando escena activa'}</p>
+              {state?.updatedAt ? (
+                <small className="autosave-status">
+                  Guardado {formatSaveTime(state.updatedAt)}
+                </small>
+              ) : null}
             </div>
           </div>
 
@@ -2779,33 +2819,48 @@ function AudioCuePlayer({
 async function postJson<T = unknown>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
     method: 'POST',
+    credentials: 'include',
     headers: {
+      ...authHeaders(),
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
   })
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
-      | null
-    throw new Error(payload?.error ?? `HTTP ${response.status}`)
+    throw new Error(await readApiError(response))
   }
 
   return (await response.json()) as T
 }
 
 async function getJson<T = unknown>(url: string): Promise<T> {
-  const response = await fetch(url)
+  const response = await fetch(url, {
+    credentials: 'include',
+    headers: authHeaders(),
+  })
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as
-      | { error?: string }
-      | null
-    throw new Error(payload?.error ?? `HTTP ${response.status}`)
+    throw new Error(await readApiError(response))
   }
 
   return (await response.json()) as T
+}
+
+async function readApiError(response: Response) {
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: string | { message?: string } }
+    | null
+
+  if (typeof payload?.error === 'string') return payload.error
+  return payload?.error?.message ?? `HTTP ${response.status}`
+}
+
+function formatSaveTime(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime())
+    ? 'reciente'
+    : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 function slugify(value: string) {

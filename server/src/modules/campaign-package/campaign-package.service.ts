@@ -22,7 +22,7 @@ import type {
 } from "../../../../shared/types/table-experience";
 
 const PACKAGE_KIND = "dm-interactive-table.campaign-package";
-const APP_VERSION = "2.0.0-alpha.20";
+const APP_VERSION = "2.0.0-alpha.21";
 
 export class CampaignPackageService {
   exportCampaign(campaignId = DEFAULT_CAMPAIGN_ID, exportedBy = "dm") {

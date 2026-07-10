@@ -347,6 +347,10 @@ Desde `2.0.0-alpha.9`, `rename` valida nombres únicos por escena, `delete` no d
 
 ## Seguridad de payload
 
+Desde `2.0.0-alpha.21`, el handshake exige `socket.handshake.auth.token`. El servidor verifica firma, expiración, rol, `campaignId` y `sessionId`; nunca toma el rol declarado por el navegador como autoridad. Solo después une el socket a rooms autorizadas.
+
+Cada comando valida nuevamente que el `campaignId` del payload coincide con el principal. Los `requestId` se cachean por identidad y evento durante cinco minutos: un reintento recibe el mismo ack sin repetir la mutación. El servidor limita cada payload a 64 KiB y aplica un límite de eventos por ventana.
+
 Antes de emitir al display:
 
 - Remover `dmNotes`.
@@ -358,8 +362,8 @@ Antes de emitir al display:
 
 ## Reconexión
 
-1. Cliente conecta y se identifica.
-2. Servidor valida rol y campaña.
+1. Cliente conecta con un token firmado.
+2. Servidor deriva identidad, rol y campaña desde el token.
 3. Cliente se une a rooms autorizados.
 4. Cliente solicita `game:state`.
 5. Servidor responde snapshot filtrado por rol.
@@ -382,5 +386,7 @@ type RealtimeError = {
 - Si el DM mueve un token, el display lo ve sin recargar.
 - Si el display se reconecta, recupera la escena activa.
 - Si un jugador intenta mover un token sin permisos, el servidor rechaza.
+- Un socket anónimo o con rol/campaña falsificados no completa el handshake.
+- Un comando reintentado con el mismo `requestId` solo se aplica una vez.
 - Los datos privados no salen por eventos públicos.
 - Cada evento documentado tiene tipo compartido antes de usarse en UI.

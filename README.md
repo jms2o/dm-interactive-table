@@ -1,58 +1,57 @@
 # DM Interactive Table
 
-Plataforma web para dirigir campañas de D&D con una pantalla interactiva para jugadores y un panel privado para el Dungeon Master.
-
-## Objetivo
-
-Crear una mesa digital para partidas de rol donde el DM pueda controlar mapas, tokens, narrativa, enemigos, efectos y herramientas asistidas por IA.
-
-## Stack inicial
-
-- React + TypeScript
-- Node.js + Express
-- Socket.IO
-- PostgreSQL + Prisma
-- Konva.js
-- IA para generación de narrativa, NPCs, villanos y eventos
-
-## Módulos principales
-
-- Display público
-- Panel del DM
-- Motor de mapas
-- Motor de tokens
-- Motor de dados
-- Motor de combate
-- Motor de narrativa
-- Motor de IA
-- Sincronización en tiempo real
+Motor de campañas de rol con panel privado para el DM, mapa sincronizado para mesa física y cliente móvil para jugadores.
 
 ## Versión actual
 
-2.0.0-alpha.20 - Capas locales y minimapa navegable para escenas grandes.
+`2.0.0-alpha.21 - Session Reliability`
 
-## Ejecutar
+Esta entrega incorpora autenticación real del DM, códigos temporales para jugadores y display, autorización HTTP/Socket.IO, autosave local o PostgreSQL, recuperación tras reinicio, reconexión con comandos idempotentes, Docker Compose, CI y Playwright.
+
+## Inicio con Docker
+
+Requiere Docker Desktop.
 
 ```bash
-npm run install:all
-npm run dev
+docker compose up --build
 ```
 
-URLs locales:
+Abre `http://localhost:4000/dm`. La primera visita crea la cuenta administradora; no hay credenciales predeterminadas.
+
+Para detener la mesa:
+
+```bash
+docker compose down
+```
+
+Los datos de PostgreSQL permanecen en el volumen `postgres_data`. Para que los QR usen directamente la IP del equipo, define `PUBLIC_BASE_URL=http://IP-LAN:4000`. Antes de exponer el servicio fuera de una LAN confiable, configura `AUTH_SECRET`, `POSTGRES_PASSWORD`, TLS y `COOKIE_SECURE=true` mediante un archivo `.env` basado en [.env.example](.env.example).
+
+## Desarrollo local
+
+Requiere Node.js 22.
+
+```bash
+npm run setup
+npm run dev
+```
 
 - DM: `http://localhost:5173/dm`
 - Display: `http://localhost:5173/display`
 - Jugador: `http://localhost:5173/player`
-- Readiness API: `http://localhost:4000/api/demo/readiness`
-- Assets campaña demo: `http://localhost:4000/api/campaigns/demo-campaign/assets`
-- Export campaña demo: `http://localhost:4000/api/campaigns/demo-campaign/package/export`
+- API: `http://localhost:4000/api`
+- Health: `http://localhost:4000/api/health`
 
-## Verificar
+Sin `DATABASE_URL`, el servidor usa snapshots JSON atómicos en `server/data`. Con PostgreSQL usa Prisma y las migraciones de [prisma/migrations](prisma/migrations).
+
+## Verificación
 
 ```bash
 npm run verify
+npm run test:e2e
 ```
 
-## Documentación técnica
+`verify` ejecuta build, lint, geometría de mapa/visión/cámara, seguridad, recuperación, validación Prisma y el flujo integrado HTTP/Socket.IO. El E2E requiere Chromium de Playwright (`npx playwright install chromium`).
 
-El proyecto ahora sigue una metodología de arquitectura primero. La documentación principal vive en [docs/README.md](docs/README.md) e incluye SRS, arquitectura, diseño de base de datos, design system, diagramas UML, Socket.IO, módulos del motor, OpenAPI, plan de pruebas y roadmap.
+## Documentación
+
+El índice técnico está en [docs/README.md](docs/README.md). Incluye SRS, arquitectura, base de datos, design system, UML, red Socket.IO, módulos, OpenAPI, pruebas, roadmap y briefs de implementación.

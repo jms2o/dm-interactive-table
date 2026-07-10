@@ -4,6 +4,11 @@ dist/
 **/dist/
 server/src/generated/prisma/
 coverage/
+playwright-report/
+test-results/
+data/
+**/data/
+tmp/
 
 *.log
 *.db

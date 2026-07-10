@@ -47,7 +47,7 @@ import type {
   TokenMovedEvent,
 } from '../../../../shared/types/realtime'
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:4000'
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? window.location.origin
 
 type RealtimeState = {
   connected: boolean
@@ -74,10 +74,18 @@ type RealtimeState = {
   visionHistory: VisionHistoryState
 }
 
-export function useRealtimeGame(role: ClientRole): RealtimeState {
+export function useRealtimeGame(
+  role: ClientRole,
+  accessToken: string,
+  campaignId: string,
+  sessionId = 'demo-session',
+  onSessionRevoked?: () => void | Promise<void>,
+): RealtimeState {
   const socketRef = useRef<Socket | null>(null)
   const [connected, setConnected] = useState(false)
-  const [state, setState] = useState<GameStatePayload | null>(null)
+  const [state, setState] = useState<GameStatePayload | null>(() =>
+    readCachedState(role, campaignId),
+  )
   const [activeEncounter, setActiveEncounter] =
     useState<EncounterState | null>(null)
   const [lastRoll, setLastRoll] = useState<DiceRollResult | null>(null)
@@ -87,24 +95,35 @@ export function useRealtimeGame(role: ClientRole): RealtimeState {
     canRedo: false,
   })
   const [lastEvent, setLastEvent] = useState('')
+  const [reconnectAttempt, setReconnectAttempt] = useState(0)
 
   useEffect(() => {
     const socket = io(SOCKET_URL, {
       auth: {
-        role,
-        campaignId: 'demo-campaign',
-        sessionId: 'demo-session',
+        token: accessToken,
+        campaignId,
+        sessionId,
         sceneId: 'demo-scene',
       },
-      transports: ['websocket'],
+      withCredentials: true,
+      reconnection: true,
+      reconnectionAttempts: Number.POSITIVE_INFINITY,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5000,
+      randomizationFactor: 0.35,
+      timeout: 10000,
+      retries: 5,
+      ackTimeout: 8000,
     })
 
     socketRef.current = socket
 
     socket.on('connect', () => {
       setConnected(true)
+      setReconnectAttempt(0)
       setLastError('')
       setLastEvent(`Conectado como ${role}`)
+      socket.emit('game:state:request', {})
     })
 
     socket.on('disconnect', () => {
@@ -115,13 +134,37 @@ export function useRealtimeGame(role: ClientRole): RealtimeState {
     socket.on('connect_error', (error) => {
       setConnected(false)
       setLastError(error.message)
+
+      if (
+        (error as Error & { data?: { code?: string } }).data?.code ===
+        'SESSION_REVOKED'
+      ) {
+        void onSessionRevoked?.()
+      }
+    })
+
+    socket.io.on('reconnect_attempt', (attempt) => {
+      setReconnectAttempt(attempt)
+      setLastEvent(`Reconectando · intento ${attempt}`)
     })
 
     socket.on('game:state', (payload: GameStatePayload) => {
       setState(payload)
+      cacheState(role, campaignId, payload)
       if (payload.visionHistory) setVisionHistory(payload.visionHistory)
       setLastEvent('game:state')
     })
+
+    socket.on(
+      'security:error',
+      (payload: { code?: string; message?: string }) => {
+      setLastError(payload.message ?? 'Acceso no autorizado')
+
+        if (payload.code === 'SESSION_REVOKED') {
+          void onSessionRevoked?.()
+        }
+      },
+    )
 
     socket.on('token:moved', (payload: TokenMovedEvent) => {
       setLastEvent(`token:moved ${payload.tokenId}`)
@@ -186,18 +229,23 @@ export function useRealtimeGame(role: ClientRole): RealtimeState {
 
     return () => {
       socket.removeAllListeners()
+      socket.io.removeAllListeners()
       socket.close()
       socketRef.current = null
     }
-  }, [role])
+  }, [accessToken, campaignId, onSessionRevoked, role, sessionId])
 
   const connectionLabel = useMemo(() => {
     if (connected) {
       return 'Conectado'
     }
 
+    if (reconnectAttempt > 0) {
+      return `Reconectando (${reconnectAttempt})`
+    }
+
     return lastError ? 'Sin conexión' : 'Conectando'
-  }, [connected, lastError])
+  }, [connected, lastError, reconnectAttempt])
 
   function moveToken(command: TokenMoveCommand) {
     socketRef.current?.emit('token:move', command, (ack: TokenMoveAck) => {
@@ -432,4 +480,29 @@ export function useRealtimeGame(role: ClientRole): RealtimeState {
     updateVision,
     visionHistory,
   }
+}
+
+function cacheState(
+  role: ClientRole,
+  campaignId: string,
+  state: GameStatePayload,
+) {
+  try {
+    sessionStorage.setItem(cacheKey(role, campaignId), JSON.stringify(state))
+  } catch {
+    // The live socket remains authoritative when browser storage is unavailable.
+  }
+}
+
+function readCachedState(role: ClientRole, campaignId: string) {
+  try {
+    const raw = sessionStorage.getItem(cacheKey(role, campaignId))
+    return raw ? (JSON.parse(raw) as GameStatePayload) : null
+  } catch {
+    return null
+  }
+}
+
+function cacheKey(role: ClientRole, campaignId: string) {
+  return `dit:game-state:${role}:${campaignId}`
 }

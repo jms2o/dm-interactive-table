@@ -18,9 +18,12 @@ Definir un modelo relacional inicial para campañas, mundos, escenas, mapas, tok
 ```mermaid
 erDiagram
   User ||--o{ CampaignMember : joins
+  User ||--o{ TableAccessCode : creates
   Campaign ||--o{ CampaignMember : has
+  Campaign ||--o{ TableAccessCode : grants
   World ||--o{ Campaign : contains
   Campaign ||--o{ GameSession : schedules
+  GameSession ||--o{ TableAccessCode : scopes
   Campaign ||--o{ PlayerCharacter : has
   Campaign ||--o{ NPC : has
   Campaign ||--o{ Encounter : has
@@ -45,6 +48,7 @@ Representa una identidad local o autenticada.
 - `id`
 - `displayName`
 - `email`
+- `passwordHash`: bcrypt; opcional para identidades heredadas o invitadas
 - `role`
 - `createdAt`
 - `updatedAt`
@@ -96,6 +100,23 @@ Sesión de juego.
 - `endedAt`
 - `summaryPublic`
 - `summaryPrivate`
+
+### TableAccessCode
+
+Concesión temporal para clientes sin cuenta.
+
+- `id`
+- `campaignId`
+- `sessionId`
+- `createdById`
+- `codeHash`: HMAC SHA-256; nunca el código visible
+- `playerEnabled`
+- `displayEnabled`
+- `expiresAt`
+- `revokedAt`
+- `sessionsRevokedAt`: invalida tokens ya emitidos al cerrar la mesa
+- `createdAt`
+- `updatedAt`
 
 ### Scene
 

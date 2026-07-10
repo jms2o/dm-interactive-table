@@ -1,5 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import { z } from "zod";
+import type { AuthPrincipal } from "../../shared/types/auth";
 import type {
   AudioMixerAck,
   AudioPresetAck,
@@ -25,6 +26,7 @@ import {
 } from "./game/game.state";
 import { combatService } from "./modules/combat/combat.service";
 import { diceService } from "./modules/dice/dice.service";
+import { authService } from "./security";
 
 type Ack<T> = (payload: T) => void;
 
@@ -33,6 +35,12 @@ type ClientContext = {
   sessionId: string;
   sceneId: string;
   role: ClientRole;
+};
+
+type CommandResultCacheEntry = {
+  expiresAt: number;
+  response?: unknown;
+  waiters: Array<(response: unknown) => void>;
 };
 
 const clientRoleSchema = z.enum(["dm", "display", "player"]);
@@ -274,7 +282,80 @@ const audioPresetManageSchema = z.object({
 });
 
 export function configureSocket(io: Server) {
+  const commandResults = new Map<string, CommandResultCacheEntry>();
+  const stopListeningForRevocation = authService.onTableAccessRevoked(
+    (campaignId) => {
+      for (const connectedSocket of io.sockets.sockets.values()) {
+        const principal = connectedSocket.data.principal as
+          | AuthPrincipal
+          | undefined;
+
+        if (
+          principal &&
+          principal.role !== "dm" &&
+          principal.campaignId === campaignId
+        ) {
+          connectedSocket.emit("security:error", {
+            code: "SESSION_REVOKED",
+            message: "Table access was closed by the DM",
+          });
+          connectedSocket.disconnect(true);
+        }
+      }
+    },
+  );
+  io.engine.once("close", stopListeningForRevocation);
+
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token;
+
+    if (typeof token !== "string" || !token) {
+      next(socketSecurityError("AUTH_REQUIRED", "Authentication required"));
+      return;
+    }
+
+    void authService
+      .validateToken(token)
+      .then((principal) => {
+        const requestedCampaignId = socket.handshake.auth?.campaignId;
+        const requestedRole = socket.handshake.auth?.role;
+
+        if (
+          (requestedCampaignId &&
+            requestedCampaignId !== principal.campaignId) ||
+          (requestedRole && requestedRole !== principal.role)
+        ) {
+          next(
+            socketSecurityError(
+              "CAMPAIGN_ACCESS_DENIED",
+              "Socket context is not authorized",
+            ),
+          );
+          return;
+        }
+
+        socket.data.principal = principal;
+        next();
+      })
+      .catch((error) => {
+        const code =
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          typeof error.code === "string"
+            ? error.code
+            : "SESSION_INVALID";
+        next(
+          socketSecurityError(
+            code,
+            error instanceof Error ? error.message : "Invalid session",
+          ),
+        );
+      });
+  });
+
   io.on("connection", (socket) => {
+    installSocketGuards(socket, commandResults);
     const context = contextFromSocket(socket);
     joinContextRooms(socket, context);
     socket.emit("game:state", gameState.getSnapshot(context.role));
@@ -287,7 +368,28 @@ export function configureSocket(io: Server) {
         return;
       }
 
-      const nextContext = parsed.data satisfies ClientJoinCommand;
+      const requestedContext = parsed.data satisfies ClientJoinCommand;
+      const principal = principalFromSocket(socket);
+
+      if (
+        requestedContext.campaignId !== principal.campaignId ||
+        requestedContext.role !== principal.role ||
+        (principal.sessionId &&
+          requestedContext.sessionId !== principal.sessionId)
+      ) {
+        socket.emit("security:error", {
+          code: "CAMPAIGN_ACCESS_DENIED",
+          message: "Socket context is not authorized",
+        });
+        return;
+      }
+
+      const nextContext: ClientContext = {
+        ...requestedContext,
+        campaignId: principal.campaignId,
+        sessionId: principal.sessionId ?? requestedContext.sessionId,
+        role: principal.role,
+      };
       leaveContextRooms(socket);
       joinContextRooms(socket, nextContext);
       const snapshot = gameState.getSnapshot(nextContext.role);
@@ -327,7 +429,7 @@ export function configureSocket(io: Server) {
         return;
       }
 
-      const result = gameState.moveToken(parsed.data, socket.id);
+      const result = gameState.moveToken(parsed.data, actorIdFromSocket(socket));
       ack?.(result.ack);
 
       if (!result.event) {
@@ -379,7 +481,10 @@ export function configureSocket(io: Server) {
           return;
         }
 
-        const result = gameState.updateNarrative(parsed.data, socket.id);
+        const result = gameState.updateNarrative(
+          parsed.data,
+          actorIdFromSocket(socket),
+        );
         ack?.(result.ack);
 
         if (!result.event) {
@@ -407,6 +512,18 @@ export function configureSocket(io: Server) {
     );
 
     socket.on("dice:roll", async (rawPayload, ack?: Ack<DiceRollAck>) => {
+      if (
+        !requireAnyRole(
+          socket,
+          ["dm", "player"],
+          ack,
+          rawPayload,
+          "Only a DM or player can roll dice",
+        )
+      ) {
+        return;
+      }
+
       const parsed = diceRollSchema.safeParse(rawPayload);
 
       if (!parsed.success) {
@@ -418,8 +535,23 @@ export function configureSocket(io: Server) {
         return;
       }
 
+      if (
+        activeContextFromSocket(socket).role === "player" &&
+        parsed.data.visibility === "dm"
+      ) {
+        ack?.({
+          ok: false,
+          requestId: parsed.data.requestId,
+          error: "Players cannot create DM-only rolls",
+        });
+        return;
+      }
+
       try {
-        const roll = await diceService.roll(parsed.data, socket.id);
+        const roll = await diceService.roll(
+          parsed.data,
+          actorIdFromSocket(socket),
+        );
         ack?.({
           ok: true,
           requestId: parsed.data.requestId,
@@ -553,7 +685,7 @@ export function configureSocket(io: Server) {
         return;
       }
 
-      const result = gameState.updateFog(parsed.data, socket.id);
+      const result = gameState.updateFog(parsed.data, actorIdFromSocket(socket));
       ack?.(result.ack);
 
       if (!result.event) {
@@ -591,7 +723,10 @@ export function configureSocket(io: Server) {
         return;
       }
 
-      const result = gameState.updateLighting(parsed.data, socket.id);
+      const result = gameState.updateLighting(
+        parsed.data,
+        actorIdFromSocket(socket),
+      );
       ack?.(result.ack);
 
       if (!result.event) {
@@ -651,7 +786,10 @@ export function configureSocket(io: Server) {
         return;
       }
 
-      const result = gameState.updateVision(parsed.data, socket.id);
+      const result = gameState.updateVision(
+        parsed.data,
+        actorIdFromSocket(socket),
+      );
       ack?.(result.ack);
 
       if (!result.event) {
@@ -703,7 +841,7 @@ export function configureSocket(io: Server) {
         return;
       }
 
-      const result = gameState.cueAsset(parsed.data, socket.id);
+      const result = gameState.cueAsset(parsed.data, actorIdFromSocket(socket));
       ack?.(result.ack);
 
       if (!result.event) {
@@ -743,7 +881,10 @@ export function configureSocket(io: Server) {
           return;
         }
 
-        const result = gameState.updateAudioMixer(parsed.data, socket.id);
+        const result = gameState.updateAudioMixer(
+          parsed.data,
+          actorIdFromSocket(socket),
+        );
         ack?.(result.ack);
 
         if (!result.event) {
@@ -784,7 +925,10 @@ export function configureSocket(io: Server) {
           return;
         }
 
-        const result = gameState.saveAudioPreset(parsed.data, socket.id);
+        const result = gameState.saveAudioPreset(
+          parsed.data,
+          actorIdFromSocket(socket),
+        );
         ack?.(result.ack);
 
         if (!result.event) {
@@ -825,7 +969,10 @@ export function configureSocket(io: Server) {
           return;
         }
 
-        const result = gameState.applyAudioPreset(parsed.data, socket.id);
+        const result = gameState.applyAudioPreset(
+          parsed.data,
+          actorIdFromSocket(socket),
+        );
         ack?.(result.ack);
 
         if (!result.event) {
@@ -866,7 +1013,10 @@ export function configureSocket(io: Server) {
           return;
         }
 
-        const result = gameState.manageAudioPreset(parsed.data, socket.id);
+        const result = gameState.manageAudioPreset(
+          parsed.data,
+          actorIdFromSocket(socket),
+        );
         ack?.(result.ack);
 
         if (!result.event) {
@@ -884,36 +1034,24 @@ export function configureSocket(io: Server) {
 }
 
 function contextFromSocket(socket: Socket): ClientContext {
-  const parsed = clientJoinSchema.safeParse({
-    campaignId: socket.handshake.auth?.campaignId ?? socket.handshake.query.campaignId,
-    sessionId: socket.handshake.auth?.sessionId ?? socket.handshake.query.sessionId,
-    sceneId: socket.handshake.auth?.sceneId ?? socket.handshake.query.sceneId,
-    role: socket.handshake.auth?.role ?? socket.handshake.query.role,
-  });
+  const principal = principalFromSocket(socket);
+  const sceneId = z
+    .string()
+    .min(1)
+    .safeParse(socket.handshake.auth?.sceneId);
 
-  if (!parsed.success) {
-    return {
-      campaignId: DEFAULT_CAMPAIGN_ID,
-      sessionId: DEFAULT_SESSION_ID,
-      sceneId: DEFAULT_SCENE_ID,
-      role: "display",
-    };
-  }
-
-  return parsed.data;
+  return {
+    campaignId: principal.campaignId,
+    sessionId: principal.sessionId ?? DEFAULT_SESSION_ID,
+    sceneId: sceneId.success ? sceneId.data : DEFAULT_SCENE_ID,
+    role: principal.role,
+  };
 }
 
 function activeContextFromSocket(socket: Socket): ClientContext {
   const stored = socket.data.context as ClientContext | undefined;
 
-  return (
-    stored ?? {
-      campaignId: DEFAULT_CAMPAIGN_ID,
-      sessionId: DEFAULT_SESSION_ID,
-      sceneId: DEFAULT_SCENE_ID,
-      role: "display",
-    }
-  );
+  return stored ?? contextFromSocket(socket);
 }
 
 function joinContextRooms(socket: Socket, context: ClientContext) {
@@ -1009,17 +1147,165 @@ function requireRole<T extends { ok: boolean; requestId: string; error?: string 
   error: string,
 ) {
   const context = activeContextFromSocket(socket);
+  const campaignId = campaignIdFromPayload(rawPayload);
 
-  if (context.role === role) {
+  if (context.role === role && (!campaignId || campaignId === context.campaignId)) {
     return true;
   }
 
   ack?.({
     ok: false,
     requestId: requestIdFromPayload(rawPayload),
-    error,
+    error:
+      campaignId && campaignId !== context.campaignId
+        ? "Campaign access denied"
+        : error,
   } as T);
   return false;
+}
+
+function requireAnyRole<
+  T extends { ok: boolean; requestId: string; error?: string },
+>(
+  socket: Socket,
+  roles: ClientRole[],
+  ack: Ack<T> | undefined,
+  rawPayload: unknown,
+  error: string,
+) {
+  const context = activeContextFromSocket(socket);
+  const campaignId = campaignIdFromPayload(rawPayload);
+
+  if (
+    roles.includes(context.role) &&
+    (!campaignId || campaignId === context.campaignId)
+  ) {
+    return true;
+  }
+
+  ack?.({
+    ok: false,
+    requestId: requestIdFromPayload(rawPayload),
+    error:
+      campaignId && campaignId !== context.campaignId
+        ? "Campaign access denied"
+        : error,
+  } as T);
+  return false;
+}
+
+function principalFromSocket(socket: Socket): AuthPrincipal {
+  const principal = socket.data.principal as AuthPrincipal | undefined;
+
+  if (!principal) {
+    throw new Error("Authenticated socket principal is missing");
+  }
+
+  return principal;
+}
+
+function actorIdFromSocket(socket: Socket) {
+  return principalFromSocket(socket).id;
+}
+
+function campaignIdFromPayload(payload: unknown): string | undefined {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "campaignId" in payload &&
+    typeof payload.campaignId === "string"
+  ) {
+    return payload.campaignId;
+  }
+
+  return undefined;
+}
+
+function installSocketGuards(
+  socket: Socket,
+  commandResults: Map<string, CommandResultCacheEntry>,
+) {
+  let windowStartedAt = Date.now();
+  let eventCount = 0;
+
+  socket.use((packet, next) => {
+    const [eventName, payload] = packet;
+    const now = Date.now();
+
+    if (now - windowStartedAt >= 10_000) {
+      windowStartedAt = now;
+      eventCount = 0;
+    }
+
+    eventCount += 1;
+
+    if (eventCount > 200) {
+      next(socketSecurityError("RATE_LIMITED", "Too many socket events"));
+      return;
+    }
+
+    if (Buffer.byteLength(JSON.stringify(payload ?? null), "utf8") > 65_536) {
+      next(
+        socketSecurityError(
+          "PAYLOAD_TOO_LARGE",
+          `${String(eventName)} payload is too large`,
+        ),
+      );
+      return;
+    }
+
+    const requestId = requestIdFromPayload(payload);
+    const originalAck = packet[packet.length - 1];
+
+    if (requestId !== "unknown" && typeof originalAck === "function") {
+      const cacheKey = `${actorIdFromSocket(socket)}:${String(eventName)}:${requestId}`;
+      const cached = commandResults.get(cacheKey);
+
+      if (cached && cached.expiresAt > now) {
+        if ("response" in cached) {
+          originalAck(cached.response);
+        } else {
+          cached.waiters.push(originalAck);
+        }
+        return;
+      }
+
+      const entry: CommandResultCacheEntry = {
+        expiresAt: now + 5 * 60 * 1000,
+        waiters: [],
+      };
+      commandResults.set(cacheKey, entry);
+
+      packet[packet.length - 1] = (response: unknown) => {
+        entry.response = response;
+        originalAck(response);
+
+        for (const waiter of entry.waiters) {
+          waiter(response);
+        }
+
+        entry.waiters = [];
+      };
+
+      if (commandResults.size > 2000) {
+        for (const [key, candidate] of commandResults) {
+          if (candidate.expiresAt <= now) {
+            commandResults.delete(key);
+          }
+        }
+      }
+    }
+
+    next();
+  });
+}
+
+function socketSecurityError(code: string, message: string) {
+  const error = new Error(message) as Error & {
+    data?: { code: string; message: string };
+  };
+  error.data = { code, message };
+  return error;
 }
 
 function requestIdFromPayload(payload: unknown): string {

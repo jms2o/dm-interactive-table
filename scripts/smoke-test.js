@@ -1,12 +1,18 @@
 const assert = require("node:assert/strict");
+const { rm } = require("node:fs/promises");
 const { createServer } = require("node:http");
 const path = require("node:path");
 
 const rootDir = path.resolve(__dirname, "..");
+const testDataDir = path.join(rootDir, "tmp", `smoke-${process.pid}`);
 process.env.NODE_ENV = "test";
 process.env.CLIENT_ORIGIN = "*";
 process.env.DATABASE_URL = "";
+process.env.AUTH_SECRET = "smoke-test-auth-secret-with-at-least-32-characters";
+process.env.DATA_DIR = testDataDir;
 process.env.TS_NODE_PROJECT = path.join(rootDir, "server", "tsconfig.json");
+
+let dmAccessToken = "";
 
 require(path.join(
   rootDir,
@@ -43,6 +49,12 @@ const { configureSocket } = require(path.join(
   "src",
   "socket",
 ));
+const { authService } = require(path.join(
+  rootDir,
+  "server",
+  "src",
+  "security",
+));
 
 async function main() {
   await gameState.initialize();
@@ -67,19 +79,46 @@ async function main() {
     await verifyHttpFlow(apiBase, socketUrl);
     console.log("Smoke test passed");
   } finally {
+    await gameState.flushPersistence();
     await closeSocketServer(socketServer);
     await closeServer(httpServer);
+    await rm(testDataDir, { recursive: true, force: true });
   }
 }
 
 async function verifyHttpFlow(apiBase, socketUrl) {
   const apiOrigin = apiBase.replace(/\/api$/, "");
   const root = await getJson(`http://127.0.0.1:${new URL(apiBase).port}/`);
-  assert.equal(root.version, "2.0.0-alpha.20");
+  assert.equal(root.version, "2.0.0-alpha.21");
+
+  const status = await getJson(`${apiBase}/auth/status`);
+  assert.equal(status.setupRequired, true);
+
+  const unauthorizedRulesets = await fetch(`${apiBase}/rulesets`);
+  assert.equal(unauthorizedRulesets.status, 401);
+
+  const registration = await postJson(
+    `${apiBase}/auth/register`,
+    {
+      displayName: "Smoke DM",
+      email: "smoke@example.test",
+      password: "smoke-password-123",
+    },
+    "",
+  );
+  assert.equal(registration.principal.role, "dm");
+  assert.equal(registration.principal.campaignId, "demo-campaign");
+  dmAccessToken = registration.socketToken;
+
+  const authenticated = await getJson(`${apiBase}/auth/me`, dmAccessToken);
+  assert.equal(authenticated.principal.id, registration.principal.id);
+
+  const network = await getJson(`${apiBase}/network`);
+  assert.ok(network.origins.some((origin) => origin.source === "current"));
 
   const readiness = await getJson(`${apiBase}/demo/readiness`);
   assert.equal(readiness.allReady, true);
-  assert.equal(readiness.version, "2.0.0-alpha.20");
+  assert.equal(readiness.version, "2.0.0-alpha.21");
 
   const rulesets = await getJson(`${apiBase}/rulesets`);
   assert.equal(rulesets[0].id, "dnd5e");
@@ -179,14 +218,49 @@ async function verifyHttpFlow(apiBase, socketUrl) {
   );
   assert.equal(createdAsset.type, "sound");
 
-  await verifySocketFlow(socketUrl, ambienceAsset.id, ambienceAsset.url);
+  const tableAccess = await postJson(`${apiBase}/table-access`, {
+    campaignId: "demo-campaign",
+    sessionId: "demo-session",
+    playerEnabled: true,
+    displayEnabled: true,
+    ttlMinutes: 60,
+  });
+  assert.equal(tableAccess.code.length, 6);
+
+  const playerSession = await postJson(
+    `${apiBase}/table-access/join`,
+    {
+      code: tableAccess.code,
+      role: "player",
+      displayName: "Smoke Player",
+    },
+    "",
+  );
+  const displaySession = await postJson(
+    `${apiBase}/table-access/join`,
+    {
+      code: tableAccess.code,
+      role: "display",
+      displayName: "Smoke Display",
+    },
+    "",
+  );
+
+  await verifySocketFlow(
+    socketUrl,
+    ambienceAsset.id,
+    ambienceAsset.url,
+    dmAccessToken,
+    playerSession.socketToken,
+    displaySession.socketToken,
+  );
 
   const exportedPackage = await getJson(
     `${apiBase}/campaigns/demo-campaign/package/export`,
   );
   assert.equal(exportedPackage.kind, "dm-interactive-table.campaign-package");
   assert.equal(exportedPackage.schemaVersion, 1);
-  assert.equal(exportedPackage.appVersion, "2.0.0-alpha.20");
+  assert.equal(exportedPackage.appVersion, "2.0.0-alpha.21");
   assert.equal(exportedPackage.manifest.campaignId, "demo-campaign");
   assert.equal(exportedPackage.manifest.assetMode, "metadata-only");
   assert.ok(exportedPackage.manifest.counts.tokens > 0);
@@ -253,10 +327,44 @@ async function verifyHttpFlow(apiBase, socketUrl) {
   assert.ok(copiedAssets.assets.length >= applyReport.appliedResources.assetIds.length);
 }
 
-async function verifySocketFlow(socketUrl, ambienceAssetId, ambienceAssetUrl) {
+async function verifySocketFlow(
+  socketUrl,
+  ambienceAssetId,
+  ambienceAssetUrl,
+  dmToken,
+  playerToken,
+  displayToken,
+) {
+  const anonymous = createSocketClient(socketUrl, {
+    autoConnect: false,
+    auth: { role: "dm", campaignId: "demo-campaign" },
+    transports: ["websocket"],
+  });
+  const anonymousRejected = waitFor(anonymous, "connect_error");
+  anonymous.connect();
+  const anonymousError = await anonymousRejected;
+  assert.equal(anonymousError.data.code, "AUTH_REQUIRED");
+  anonymous.close();
+
+  const spoofed = createSocketClient(socketUrl, {
+    autoConnect: false,
+    auth: {
+      token: playerToken,
+      role: "dm",
+      campaignId: "demo-campaign",
+    },
+    transports: ["websocket"],
+  });
+  const spoofRejected = waitFor(spoofed, "connect_error");
+  spoofed.connect();
+  const spoofError = await spoofRejected;
+  assert.equal(spoofError.data.code, "CAMPAIGN_ACCESS_DENIED");
+  spoofed.close();
+
   const dm = createSocketClient(socketUrl, {
     autoConnect: false,
     auth: {
+      token: dmToken,
       role: "dm",
       campaignId: "demo-campaign",
       sessionId: "demo-session",
@@ -267,7 +375,19 @@ async function verifySocketFlow(socketUrl, ambienceAssetId, ambienceAssetUrl) {
   const player = createSocketClient(socketUrl, {
     autoConnect: false,
     auth: {
+      token: playerToken,
       role: "player",
+      campaignId: "demo-campaign",
+      sessionId: "demo-session",
+      sceneId: "demo-scene",
+    },
+    transports: ["websocket"],
+  });
+  const display = createSocketClient(socketUrl, {
+    autoConnect: false,
+    auth: {
+      token: displayToken,
+      role: "display",
       campaignId: "demo-campaign",
       sessionId: "demo-session",
       sceneId: "demo-scene",
@@ -277,7 +397,9 @@ async function verifySocketFlow(socketUrl, ambienceAssetId, ambienceAssetUrl) {
 
   const dmConnected = waitFor(dm, "connect");
   const playerConnected = waitFor(player, "connect");
+  const displayConnected = waitFor(display, "connect");
   const playerState = waitFor(player, "game:state");
+  const displayState = waitFor(display, "game:state");
   const fogUpdated = waitFor(player, "fog:updated");
   const lightUpdated = waitFor(player, "light:updated");
   const visionUpdated = waitFor(player, "vision:updated");
@@ -285,8 +407,43 @@ async function verifySocketFlow(socketUrl, ambienceAssetId, ambienceAssetUrl) {
 
   dm.connect();
   player.connect();
+  display.connect();
 
-  await Promise.all([dmConnected, playerConnected, playerState]);
+  const [, , , initialPlayerState, initialDisplayState] = await Promise.all([
+    dmConnected,
+    playerConnected,
+    displayConnected,
+    playerState,
+    displayState,
+  ]);
+  assert.equal(
+    initialPlayerState.scene.tokens.some((token) => !token.visible),
+    false,
+  );
+  assert.equal(
+    initialDisplayState.scene.tokens.some((token) => !token.visible),
+    false,
+  );
+
+  const forbiddenMove = await emitWithAck(player, "token:move", {
+    version: 1,
+    campaignId: "demo-campaign",
+    sceneId: "demo-scene",
+    tokenId: "token-hero",
+    position: { x: 5, y: 5 },
+    requestId: "smoke-forbidden-player-move",
+  });
+  assert.equal(forbiddenMove.ok, false);
+
+  const crossCampaignFog = await emitWithAck(dm, "fog:update", {
+    version: 1,
+    campaignId: "another-campaign",
+    sceneId: "demo-scene",
+    enabled: true,
+    requestId: "smoke-cross-campaign",
+  });
+  assert.equal(crossCampaignFog.ok, false);
+  assert.equal(crossCampaignFog.error, "Campaign access denied");
 
   const fogAck = await emitWithAck(dm, "fog:update", {
     version: 1,
@@ -303,6 +460,21 @@ async function verifySocketFlow(socketUrl, ambienceAssetId, ambienceAssetUrl) {
     requestId: "smoke-fog",
   });
   assert.equal(fogAck.ok, true);
+  const duplicateFogAck = await emitWithAck(dm, "fog:update", {
+    version: 1,
+    campaignId: "demo-campaign",
+    sceneId: "demo-scene",
+    enabled: true,
+    opacity: 0.65,
+    reveal: {
+      x: 700,
+      y: 450,
+      radius: 180,
+      label: "smoke",
+    },
+    requestId: "smoke-fog",
+  });
+  assert.deepEqual(duplicateFogAck, fogAck);
 
   const lightAck = await emitWithAck(dm, "light:update", {
     version: 1,
@@ -907,21 +1079,45 @@ async function verifySocketFlow(socketUrl, ambienceAssetId, ambienceAssetUrl) {
     ambienceAssetId,
   );
 
+  const playerKicked = waitFor(player, "disconnect");
+  const displayKicked = waitFor(display, "disconnect");
+  await authService.revokeTableAccess(
+    authService.verifyToken(dmToken),
+    "demo-campaign",
+  );
+  assert.equal(await playerKicked, "io server disconnect");
+  assert.equal(await displayKicked, "io server disconnect");
+
+  const revokedPlayer = createSocketClient(socketUrl, {
+    autoConnect: false,
+    auth: { token: playerToken },
+    transports: ["websocket"],
+  });
+  const revokedRejected = waitFor(revokedPlayer, "connect_error");
+  revokedPlayer.connect();
+  const revokedError = await revokedRejected;
+  assert.equal(revokedError.data.code, "SESSION_REVOKED");
+  revokedPlayer.close();
+
   dm.close();
   player.close();
+  display.close();
 }
 
-async function getJson(url) {
-  const response = await fetch(url);
+async function getJson(url, token = dmAccessToken) {
+  const response = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
   assert.equal(response.ok, true, `${url} returned ${response.status}`);
   return response.json();
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, token = dmAccessToken) {
   const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
   });

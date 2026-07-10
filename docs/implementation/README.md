@@ -33,3 +33,4 @@ Esta carpeta registra los briefs de implementación que conectan la documentaci�
 - [2.0.0-alpha.18 - Historial y edición por lotes](phase-2.0-history-batch-editing.md)
 - [2.0.0-alpha.19 - Cámara avanzada del mapa](phase-2.0-map-camera.md)
 - [2.0.0-alpha.20 - Capas y minimapa navegable](phase-2.0-map-layers-minimap.md)
+- [2.0.0-alpha.21 - Session Reliability](phase-2.0-session-reliability.md)

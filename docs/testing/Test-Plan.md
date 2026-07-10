@@ -182,3 +182,41 @@ Para cada versión:
 - Confirmar el rectángulo de viewport durante pan y zoom.
 - Revisar overlay de escritorio y disposición inferior móvil.
 - Ejecutar `npm run test:layers` dentro de la verificación integral.
+
+## Session Reliability 2.0.0-alpha.21
+
+### Seguridad unitaria
+
+- La cuenta inicial almacena bcrypt y nunca la contraseña original.
+- La cuenta sobrevive al cierre y reapertura del repositorio local.
+- Un código fija el rol autorizado y deja de funcionar al revocarse.
+- Un JWT expirado, alterado o firmado con otra clave se rechaza.
+
+### Integración HTTP y Socket.IO
+
+- Una ruta protegida responde `401` sin sesión.
+- Un socket sin token o con rol falsificado no completa el handshake.
+- Player y display no reciben tokens ocultos ni fuentes privadas.
+- Un jugador no mueve tokens y un display no tira dados.
+- Un comando dirigido a otra campaña responde `403` o ack negativo.
+- Dos entregas del mismo `requestId` producen una sola mutación.
+
+### Recuperación
+
+- La cola de autosave termina antes del apagado controlado.
+- Un proceso nuevo carga el último snapshot JSON o Prisma.
+- El cliente conserva el snapshot permitido mientras reconecta.
+- Al volver la red solicita el estado autoritativo y reemplaza el cache.
+
+### E2E principal
+
+DM crea cuenta → abre mesa → genera código → jugador móvil entra → pierde red → reconecta → recarga → conserva escena.
+
+Comandos:
+
+```bash
+npm run test:security
+npm run test:recovery
+npm run test:smoke
+npm run test:e2e
+```

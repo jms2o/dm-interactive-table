@@ -1,0 +1,16 @@
+.git
+.github
+.agents
+.codex
+.tools
+node_modules
+**/node_modules
+dist
+**/dist
+data
+**/data
+tmp
+coverage
+.env
+.env.*
+*.log

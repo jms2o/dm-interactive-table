@@ -366,7 +366,7 @@ export function GameBoard({
       <div className="board-meta">
         <div>
           <span className="section-label">{scene.map.name}</span>
-          <strong>{scene.name}</strong>
+          <strong data-testid="scene-name">{scene.name}</strong>
         </div>
         <div className="camera-toolbar" role="group" aria-label="Cámara del mapa">
           <button

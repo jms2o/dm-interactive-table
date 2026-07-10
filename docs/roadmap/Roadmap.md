@@ -284,3 +284,23 @@ Estado: completado.
 - Corrección de interacción directa en la capa de obstáculos.
 
 Estado: completado.
+
+### 2.0.0-alpha.21 - Session Reliability
+
+- Cuenta DM con bcrypt, cookie `httpOnly` y tokens firmados.
+- Código temporal y QR para jugadores/display.
+- Autorización HTTP y Socket.IO por campaña y rol.
+- Idempotencia, límites de eventos y reconexión robusta.
+- Autosave PostgreSQL o JSON atómico con recuperación tras reinicio.
+- Docker Compose, migraciones, healthchecks y URLs LAN.
+- CI, CodeQL, Dependabot, pruebas de seguridad/recuperación/socket y E2E.
+
+Estado: completado.
+
+### Siguiente versión - Session Workflow
+
+- Selector de campaña y lobby.
+- Separación preparación/partida.
+- Inicio y cierre formal de sesión.
+- Hoja funcional de jugador.
+- Historial general undo/redo y snapshots restaurables.

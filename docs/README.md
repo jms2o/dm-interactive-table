@@ -26,6 +26,7 @@ DM Interactive Table evolucionará de una mesa digital para una campaña concret
 - [Módulos](modules/README.md): motores del sistema y documentos de diseño por módulo.
 - [OpenAPI](api/openapi.yaml): contrato inicial de API HTTP.
 - [Plan de pruebas](testing/Test-Plan.md): estrategia de calidad y matriz de pruebas.
+- [Seguridad de sesión](security/Session-Security.md): cuentas, códigos, permisos HTTP/Socket.IO y operación segura.
 - [Roadmap](roadmap/Roadmap.md): fases, versiones y entregables.
 - [Implementaciones](implementation/README.md): briefs de fase que conectan diseño con código.
 - [Runbook de demo](demo/Demo-Runbook.md): recorrido para presentar el producto.
@@ -42,13 +43,13 @@ DM Interactive Table evolucionará de una mesa digital para una campaña concret
 
 ## Estado actual
 
-Versión documental: `2.0.0-alpha.20`
+Versión documental: `2.0.0-alpha.21`
 
 El repositorio ya contiene la estructura raíz definida por la guía inicial:
 
 - `client/`: React + Vite + TypeScript.
 - `server/`: Node.js + Express + Socket.IO.
 - `shared/`: tipos compartidos de dominio.
-- `prisma/`: futura capa de modelo de datos.
+- `prisma/`: esquema, migraciones y persistencia PostgreSQL.
 - `assets/`: mapas, tokens, música, sonidos, efectos y retratos.
 - `docs/`: documentación técnica.

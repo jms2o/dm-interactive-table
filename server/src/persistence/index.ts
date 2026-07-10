@@ -1,12 +1,11 @@
-import { MemoryGameStateRepository } from "./game.repository";
+import { LocalFileGameStateRepository } from "./game.repository";
 import { createPrismaClient } from "./prisma.client";
 import { PrismaGameStateRepository } from "./prisma-game.repository";
 
-const prisma = createPrismaClient();
+export const prisma = createPrismaClient();
 
 export const gameRepository = prisma
   ? new PrismaGameStateRepository(prisma)
-  : new MemoryGameStateRepository();
+  : new LocalFileGameStateRepository();
 
 export const persistenceMode = gameRepository.mode;
-

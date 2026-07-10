@@ -11,7 +11,7 @@ import { assetService } from "../asset/asset.service";
 import { campaignService } from "../campaign/campaign.service";
 import { rulesetService } from "../ruleset/ruleset.service";
 
-const DEMO_VERSION = "2.0.0-alpha.20";
+const DEMO_VERSION = "2.0.0-alpha.21";
 
 export class DemoService {
   getReadiness(): DemoReadinessResponse {
@@ -132,6 +132,26 @@ export class DemoService {
         "Rutas /dm, /display y /player más rooms Socket.IO",
       ),
       ready(
+        "authentication",
+        "Autenticación DM",
+        "bcrypt, cookie httpOnly y token firmado activos",
+      ),
+      ready(
+        "table-access",
+        "Acceso de mesa",
+        "Código temporal, QR y roles player/display derivados por servidor",
+      ),
+      ready(
+        "session-recovery",
+        "Recuperación",
+        "Autosave serializado, snapshots locales/Prisma y reconexión idempotente",
+      ),
+      ready(
+        "delivery-pipeline",
+        "Entrega reproducible",
+        "Docker Compose, GitHub Actions, CodeQL y Playwright",
+      ),
+      ready(
         "smoke-test",
         "Smoke test",
         "npm run test:smoke recorre API y Socket.IO",
@@ -183,7 +203,7 @@ export class DemoService {
 
     return {
       version: DEMO_VERSION,
-      releaseName: "Capas y minimapa navegable",
+      releaseName: "Session Reliability",
       allReady: readyCount === items.length,
       readyCount,
       totalCount: items.length,
@@ -203,6 +223,7 @@ export class DemoService {
         "npm run lint --prefix client",
         "npm run prisma:validate --prefix server",
         "npm run test:smoke",
+        "npm run test:e2e",
       ],
       updatedAt: new Date().toISOString(),
     };

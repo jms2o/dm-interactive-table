@@ -230,6 +230,7 @@ export class GameStateStore {
   private readonly visionHistoryLimit = 50;
   private visionUndoStack: SceneExperienceState["vision"][] = [];
   private visionRedoStack: SceneExperienceState["vision"][] = [];
+  private persistenceQueue = Promise.resolve();
 
   private state: RuntimeState = {
     campaignId: DEFAULT_CAMPAIGN_ID,
@@ -310,7 +311,9 @@ export class GameStateStore {
     }
 
     this.touchExperience();
-    this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
 
     const clonedExperience = cloneExperience(experience);
 
@@ -420,7 +423,9 @@ export class GameStateStore {
     }
 
     this.touchExperience();
-    this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
 
     const clonedExperience = cloneExperience(experience);
     const clonedSource = source ? cloneLightSource(source) : undefined;
@@ -724,7 +729,9 @@ export class GameStateStore {
     }
 
     this.touchExperience();
-    this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
     const clonedExperience = cloneExperience(experience);
 
     return {
@@ -823,7 +830,9 @@ export class GameStateStore {
     }
 
     this.touchExperience();
-    this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
 
     const clonedExperience = cloneExperience(experience);
 
@@ -947,7 +956,9 @@ export class GameStateStore {
     }
 
     this.touchExperience();
-    this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
 
     const clonedExperience = cloneExperience(experience);
 
@@ -1012,7 +1023,9 @@ export class GameStateStore {
     }
 
     this.touchExperience();
-    this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
 
     const clonedExperience = cloneExperience(experience);
     const clonedPreset = cloneAudioPreset(preset);
@@ -1077,7 +1090,9 @@ export class GameStateStore {
       : { enabled: false };
 
     this.touchExperience();
-    this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
 
     const clonedExperience = cloneExperience(experience);
     const clonedPreset = cloneAudioPreset(preset);
@@ -1194,7 +1209,9 @@ export class GameStateStore {
     }
 
     this.touchExperience();
-    this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
 
     const clonedExperience = cloneExperience(experience);
     const clonedPreset = resultPreset ? cloneAudioPreset(resultPreset) : undefined;
@@ -1264,7 +1281,7 @@ export class GameStateStore {
       this.state.scene.experience.updatedAt = this.state.updatedAt;
     }
 
-    this.persistSafely(
+    this.persistSafely(() =>
       this.repository.saveTokenPosition({
         sceneId: this.state.scene.id,
         tokenId: token.id,
@@ -1273,7 +1290,9 @@ export class GameStateStore {
       }),
     );
     if (attachedLightSources.length > 0) {
-      this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+      this.persistSafely(() =>
+        this.repository.saveSceneSnapshot(this.toSnapshot()),
+      );
     }
 
     return {
@@ -1318,7 +1337,7 @@ export class GameStateStore {
     }
 
     this.touch();
-    this.persistSafely(
+    this.persistSafely(() =>
       this.repository.saveNarrative({
         sceneId: this.state.scene.id,
         text: command.text,
@@ -1363,7 +1382,9 @@ export class GameStateStore {
 
     this.state.scene.tokens.push(token);
     this.touch();
-    this.persistSafely(this.repository.saveSceneSnapshot(this.toSnapshot()));
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
 
     return { ...token };
   }
@@ -1400,7 +1421,7 @@ export class GameStateStore {
       updatedAt: new Date().toISOString(),
     };
 
-    this.persistSafely(this.repository.saveSceneSnapshot(snapshot));
+    this.persistSafely(() => this.repository.saveSceneSnapshot(snapshot));
     return cloneScene(scene);
   }
 
@@ -1533,10 +1554,16 @@ export class GameStateStore {
     };
   }
 
-  private persistSafely(operation: Promise<void>) {
-    void operation.catch((error) => {
-      console.error("Game state persistence write failed", error);
-    });
+  async flushPersistence() {
+    await this.persistenceQueue;
+  }
+
+  private persistSafely(operation: () => Promise<void>) {
+    this.persistenceQueue = this.persistenceQueue
+      .then(operation)
+      .catch((error) => {
+        console.error("Game state persistence write failed", error);
+      });
   }
 }
 

@@ -1,13 +1,18 @@
 openapi: 3.1.0
 info:
   title: DM Interactive Table API
-  version: 2.0.0-alpha.20
-  description: API HTTP inicial para campañas, escenas, mapas, combate, dados e IA.
+  version: 2.0.0-alpha.21
+  description: API HTTP para sesiones, campañas, escenas, mapas, combate, dados e IA.
 servers:
   - url: http://localhost:4000/api
+security:
+  - bearerAuth: []
+  - dmCookie: []
+  - tableCookie: []
 paths:
   /health:
     get:
+      security: []
       summary: Health check del servidor
       operationId: getHealth
       responses:
@@ -24,8 +29,229 @@ paths:
                     example: ok
                   persistence:
                     type: string
-                    enum: [memory, prisma]
-                    example: memory
+                    enum: [local, prisma]
+                    example: local
+  /auth/status:
+    get:
+      security: []
+      summary: Consultar si falta crear la cuenta inicial
+      operationId: getAuthStatus
+      responses:
+        "200":
+          description: Estado de configuración
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthStatus"
+  /auth/register:
+    post:
+      security: []
+      summary: Crear la primera cuenta administradora DM
+      operationId: registerInitialDm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [displayName, email, password]
+              properties:
+                displayName:
+                  type: string
+                  minLength: 2
+                  maxLength: 80
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                  minLength: 10
+      responses:
+        "201":
+          description: Cuenta y sesión creadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "409":
+          description: La configuración inicial ya existe
+  /auth/login:
+    post:
+      security: []
+      summary: Iniciar sesión como DM
+      operationId: loginDm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: Credenciales incorrectas
+  /auth/me:
+    get:
+      summary: Recuperar la sesión actual
+      operationId: getCurrentSession
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [dm, table]
+            default: dm
+      responses:
+        "200":
+          description: Sesión válida
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: Sesión ausente o expirada
+  /auth/logout:
+    post:
+      summary: Cerrar la sesión HTTP
+      operationId: logout
+      responses:
+        "204":
+          description: Cookie eliminada
+  /network:
+    get:
+      summary: Listar direcciones candidatas para QR y enlaces LAN
+      operationId: getNetworkOrigins
+      responses:
+        "200":
+          description: Origen actual, configurado y direcciones privadas detectadas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [origins]
+                properties:
+                  origins:
+                    type: array
+                    items:
+                      type: object
+                      required: [label, url, source]
+                      properties:
+                        label:
+                          type: string
+                        url:
+                          type: string
+                          format: uri
+                        source:
+                          type: string
+                          enum: [current, configured, network]
+  /table-access:
+    get:
+      summary: Consultar el acceso temporal de una campaña
+      operationId: getTableAccess
+      parameters:
+        - name: campaignId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Estado del acceso
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableAccessStatus"
+    post:
+      summary: Generar un código temporal de mesa
+      operationId: createTableAccess
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaignId]
+              properties:
+                campaignId:
+                  type: string
+                sessionId:
+                  type: string
+                playerEnabled:
+                  type: boolean
+                  default: true
+                displayEnabled:
+                  type: boolean
+                  default: true
+                ttlMinutes:
+                  type: integer
+                  minimum: 15
+                  maximum: 1440
+      responses:
+        "201":
+          description: Código generado y código anterior revocado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableAccessGrant"
+    delete:
+      summary: Revocar el acceso temporal de una campaña
+      operationId: revokeTableAccess
+      parameters:
+        - name: campaignId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Acceso revocado
+  /table-access/join:
+    post:
+      security: []
+      summary: Canjear un código como jugador o display
+      operationId: joinTable
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, role]
+              properties:
+                code:
+                  type: string
+                  minLength: 6
+                  maxLength: 12
+                role:
+                  type: string
+                  enum: [player, display]
+                displayName:
+                  type: string
+                  minLength: 2
+                  maxLength: 80
+      responses:
+        "200":
+          description: Sesión temporal emitida
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: Código inválido o expirado
   /demo/readiness:
     get:
       summary: Obtener estado de preparación de demo
@@ -564,6 +790,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/AiApproveResponse"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    dmCookie:
+      type: apiKey
+      in: cookie
+      name: dit_dm_session
+    tableCookie:
+      type: apiKey
+      in: cookie
+      name: dit_table_session
   parameters:
     CampaignId:
       name: campaignId
@@ -572,6 +811,82 @@ components:
       schema:
         type: string
   schemas:
+    AuthStatus:
+      type: object
+      required: [setupRequired, persistence]
+      properties:
+        setupRequired:
+          type: boolean
+        persistence:
+          type: string
+          enum: [local, prisma]
+    AuthPrincipal:
+      type: object
+      required: [id, displayName, role, campaignId, isAdmin, expiresAt]
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [dm, player, display]
+        campaignId:
+          type: string
+        sessionId:
+          type: string
+        accessGrantId:
+          type: string
+        isAdmin:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+    AuthSession:
+      type: object
+      required: [principal, socketToken]
+      properties:
+        principal:
+          $ref: "#/components/schemas/AuthPrincipal"
+        socketToken:
+          type: string
+          description: JWT usado en socket.handshake.auth.token
+    TableAccessGrant:
+      type: object
+      required:
+        [code, campaignId, playerEnabled, displayEnabled, expiresAt]
+      properties:
+        code:
+          type: string
+          pattern: "^[A-Z0-9]{6}$"
+        campaignId:
+          type: string
+        sessionId:
+          type: string
+        playerEnabled:
+          type: boolean
+        displayEnabled:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+    TableAccessStatus:
+      type: object
+      required: [active, campaignId]
+      properties:
+        active:
+          type: boolean
+        campaignId:
+          type: string
+        sessionId:
+          type: string
+        playerEnabled:
+          type: boolean
+        displayEnabled:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
     World:
       type: object
       required: [id, name, description, systemTags]
@@ -735,7 +1050,7 @@ components:
           type: string
         appVersion:
           type: string
-          example: 2.0.0-alpha.20
+          example: 2.0.0-alpha.21
         exportedAt:
           type: string
           format: date-time

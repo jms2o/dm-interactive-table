@@ -7,7 +7,7 @@ Construir un motor modular de campañas de rol, con una primera experiencia cent
 ## Stack inicial
 
 - Frontend: React, Vite, TypeScript, React Router, Zustand, TanStack Query, Axios, React-Konva, Framer Motion, Tailwind.
-- Backend: Node.js, Express, Socket.IO, Prisma, PostgreSQL, Zod.
+- Backend: Node.js, Express, Socket.IO, Prisma, PostgreSQL, Zod, JWT y bcrypt.
 - Compartido: tipos TypeScript en `shared/`.
 - Documentación: Markdown, Mermaid y OpenAPI.
 
@@ -46,9 +46,10 @@ Responsable de autoridad, validación y coordinación:
 
 - Express para API HTTP.
 - Socket.IO para sincronización.
+- Middleware de identidad, campaña y rol compartido por HTTP y realtime.
 - Servicios de dominio por motor.
 - Validación de entrada.
-- Persistencia con Prisma.
+- Persistencia con Prisma o snapshots JSON atómicos en modo local.
 - Adaptadores externos para IA y assets.
 
 ### Shared
@@ -163,4 +164,3 @@ Antes de cerrar una feature:
 - Pruebas mínimas agregadas.
 - El display no recibe campos privados.
 - El build del cliente y servidor pasa.
-

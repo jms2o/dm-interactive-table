@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, resolve } from "node:path";
 import type { GameScene } from "../../../shared/types/game";
 import {
   createDefaultSceneExperience,
@@ -7,8 +9,9 @@ import {
   type AudioTransitionState,
   type SceneExperienceState,
 } from "../../../shared/types/table-experience";
+import { env } from "../config/env";
 
-export type PersistenceMode = "memory" | "prisma";
+export type PersistenceMode = "memory" | "local" | "prisma";
 
 export type SceneSnapshot = {
   campaignId: string;
@@ -47,8 +50,8 @@ function cloneSnapshot(snapshot: SceneSnapshot): SceneSnapshot {
 }
 
 export class MemoryGameStateRepository implements GameStateRepository {
-  readonly mode = "memory" as const;
-  private snapshots = new Map<string, SceneSnapshot>();
+  readonly mode: PersistenceMode = "memory";
+  protected snapshots = new Map<string, SceneSnapshot>();
 
   async loadScene(
     campaignId: string,
@@ -102,8 +105,94 @@ export class MemoryGameStateRepository implements GameStateRepository {
     }
   }
 
-  private key(campaignId: string, sceneId: string) {
+  protected key(campaignId: string, sceneId: string) {
     return `${campaignId}:${sceneId}`;
+  }
+}
+
+export class LocalFileGameStateRepository
+  extends MemoryGameStateRepository
+  implements GameStateRepository
+{
+  override readonly mode: PersistenceMode = "local";
+  private loaded = false;
+  private writeQueue = Promise.resolve();
+  private readonly filePath: string;
+
+  constructor(dataDir = env.dataDir) {
+    super();
+    const root = isAbsolute(dataDir) ? dataDir : resolve(process.cwd(), dataDir);
+    this.filePath = resolve(root, "game-state.json");
+  }
+
+  override async loadScene(campaignId: string, sceneId: string) {
+    await this.ensureLoaded();
+    return super.loadScene(campaignId, sceneId);
+  }
+
+  override async saveSceneSnapshot(snapshot: SceneSnapshot) {
+    await this.ensureLoaded();
+    await super.saveSceneSnapshot(snapshot);
+    await this.persist();
+  }
+
+  override async saveTokenPosition(update: TokenPositionUpdate) {
+    await this.ensureLoaded();
+    await super.saveTokenPosition(update);
+    await this.persist();
+  }
+
+  override async saveNarrative(update: NarrativePersistenceUpdate) {
+    await this.ensureLoaded();
+    await super.saveNarrative(update);
+    await this.persist();
+  }
+
+  private async ensureLoaded() {
+    if (this.loaded) {
+      return;
+    }
+
+    this.loaded = true;
+
+    try {
+      const raw = await readFile(this.filePath, "utf8");
+      const snapshots = JSON.parse(raw) as SceneSnapshot[];
+
+      if (!Array.isArray(snapshots)) {
+        throw new Error("Local game state must contain an array of snapshots");
+      }
+
+      for (const snapshot of snapshots) {
+        if (snapshot?.campaignId && snapshot?.scene?.id) {
+          this.snapshots.set(
+            this.key(snapshot.campaignId, snapshot.scene.id),
+            cloneSnapshot(snapshot),
+          );
+        }
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  private async persist() {
+    const payload = JSON.stringify(
+      [...this.snapshots.values()].map((snapshot) => cloneSnapshot(snapshot)),
+      null,
+      2,
+    );
+    const temporaryPath = `${this.filePath}.${process.pid}.tmp`;
+
+    this.writeQueue = this.writeQueue.then(async () => {
+      await mkdir(dirname(this.filePath), { recursive: true });
+      await writeFile(temporaryPath, payload, "utf8");
+      await rename(temporaryPath, this.filePath);
+    });
+
+    await this.writeQueue;
   }
 }
 
