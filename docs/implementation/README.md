@@ -1,0 +1,35 @@
+# Implementaciones por Fase
+
+Esta carpeta registra los briefs de implementación que conectan la documentación de arquitectura con cambios concretos en código.
+
+## Fases registradas
+
+- [0.2.0 - Backend mínimo realtime](phase-0.2-backend-realtime.md)
+- [0.3.0 - Frontend DM y display](phase-0.3-frontend-dm-display.md)
+- [0.4.0 - Persistencia con Prisma/PostgreSQL](phase-0.4-persistence.md)
+- [0.5.0 - Dice Engine y Combat Engine](phase-0.5-dice-combat.md)
+- [0.6.0 - Campaign Engine y NPC Engine](phase-0.6-campaign-npc.md)
+- [0.7.0 - AI Engine asistivo](phase-0.7-ai-engine.md)
+- [0.8.0 - Experiencia de mesa](phase-0.8-table-experience.md)
+- [0.9.0 - Ruleset Engine](phase-0.9-ruleset-engine.md)
+- [1.0.0 - Motor de campañas usable](phase-1.0-demo-release.md)
+- [2.0.0-alpha.1 - Paquetes de campaña](phase-2.0-campaign-packages.md)
+- [2.0.0-alpha.2 - Importación aplicada segura](phase-2.0-import-apply-copy.md)
+- [2.0.0-alpha.3 - Manifest de assets empaquetados](phase-2.0-package-assets.md)
+- [2.0.0-alpha.4 - Asset Storage Engine](phase-2.0-asset-storage.md)
+- [2.0.0-alpha.5 - Audio ambiental real](phase-2.0-real-audio.md)
+- [2.0.0-alpha.6 - Mixer y escenas de audio](phase-2.0-audio-mixer.md)
+- [2.0.0-alpha.7 - Presets de audio por escena](phase-2.0-audio-presets.md)
+- [2.0.0-alpha.8 - Transiciones de audio entre presets](phase-2.0-audio-transitions.md)
+- [2.0.0-alpha.9 - Gestión fina de presets de audio](phase-2.0-audio-preset-management.md)
+- [2.0.0-alpha.10 - Export/import fino de audio](phase-2.0-audio-package-export.md)
+- [2.0.0-alpha.11 - Iluminación dinámica básica](phase-2.0-dynamic-lighting.md)
+- [2.0.0-alpha.12 - Línea de visión y obstáculos](phase-2.0-line-of-sight.md)
+- [2.0.0-alpha.13 - Visibilidad multipunto](phase-2.0-multipoint-visibility.md)
+- [2.0.0-alpha.14 - Oclusión precisa de iluminación](phase-2.0-light-occlusion.md)
+- [2.0.0-alpha.15 - Puertas y obstáculos interactivos](phase-2.0-interactive-doors.md)
+- [2.0.0-alpha.16 - Editor visual de obstáculos](phase-2.0-visual-occluder-editor.md)
+- [2.0.0-alpha.17 - Herramientas avanzadas de obstáculos](phase-2.0-advanced-occluder-tools.md)
+- [2.0.0-alpha.18 - Historial y edición por lotes](phase-2.0-history-batch-editing.md)
+- [2.0.0-alpha.19 - Cámara avanzada del mapa](phase-2.0-map-camera.md)
+- [2.0.0-alpha.20 - Capas y minimapa navegable](phase-2.0-map-layers-minimap.md)

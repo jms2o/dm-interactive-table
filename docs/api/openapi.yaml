@@ -1,0 +1,1654 @@
+openapi: 3.1.0
+info:
+  title: DM Interactive Table API
+  version: 2.0.0-alpha.20
+  description: API HTTP inicial para campañas, escenas, mapas, combate, dados e IA.
+servers:
+  - url: http://localhost:4000/api
+paths:
+  /health:
+    get:
+      summary: Health check del servidor
+      operationId: getHealth
+      responses:
+        "200":
+          description: Servidor disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  persistence:
+                    type: string
+                    enum: [memory, prisma]
+                    example: memory
+  /demo/readiness:
+    get:
+      summary: Obtener estado de preparación de demo
+      operationId: getDemoReadiness
+      responses:
+        "200":
+          description: Checklist de demo 1.0.0
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DemoReadiness"
+  /rulesets:
+    get:
+      summary: Listar rulesets disponibles
+      operationId: listRulesets
+      responses:
+        "200":
+          description: Catálogo de rulesets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RulesetSummary"
+  /rulesets/{rulesetId}:
+    get:
+      summary: Obtener definición de ruleset
+      operationId: getRuleset
+      parameters:
+        - name: rulesetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Definición completa del ruleset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RulesetDefinition"
+        "404":
+          description: Ruleset no encontrado
+  /worlds:
+    get:
+      summary: Listar mundos
+      operationId: listWorlds
+      responses:
+        "200":
+          description: Lista de mundos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/World"
+    post:
+      summary: Crear mundo
+      operationId: createWorld
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorldRequest"
+      responses:
+        "201":
+          description: Mundo creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/World"
+  /campaigns:
+    get:
+      summary: Listar campañas
+      operationId: listCampaigns
+      responses:
+        "200":
+          description: Lista de campañas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      summary: Crear campaña
+      operationId: createCampaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignRequest"
+      responses:
+        "201":
+          description: Campaña creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+  /campaigns/{campaignId}/scenes:
+    get:
+      summary: Listar escenas de campaña
+      operationId: listScenes
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Lista de escenas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Scene"
+    post:
+      summary: Crear escena
+      operationId: createScene
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSceneRequest"
+      responses:
+        "201":
+          description: Escena creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Scene"
+  /campaigns/{campaignId}/sessions:
+    get:
+      summary: Listar sesiones de campaña
+      operationId: listCampaignSessions
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Lista de sesiones
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GameSession"
+    post:
+      summary: Crear sesión
+      operationId: createCampaignSession
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGameSessionRequest"
+      responses:
+        "201":
+          description: Sesión creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameSession"
+  /campaigns/{campaignId}/ruleset:
+    get:
+      summary: Obtener ruleset activo de campaña
+      operationId: getCampaignRuleset
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Ruleset resuelto para la campaña
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignRulesetResponse"
+  /campaigns/{campaignId}/package/export:
+    get:
+      summary: Exportar campaña como paquete portable
+      operationId: exportCampaignPackage
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Paquete de campaña exportado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignPackage"
+        "404":
+          description: Campaña no encontrada
+  /campaign-packages/import:
+    post:
+      summary: Validar paquete de campaña importado
+      operationId: importCampaignPackage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignPackageImportRequest"
+      responses:
+        "200":
+          description: Paquete importable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignPackageImportReport"
+        "422":
+          description: Paquete no importable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignPackageImportReport"
+  /campaigns/{campaignId}/assets:
+    get:
+      summary: Listar assets de campaña
+      operationId: listCampaignAssets
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AssetLibraryType"
+      responses:
+        "200":
+          description: Biblioteca de assets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetLibraryResponse"
+    post:
+      summary: Registrar asset de campaña
+      operationId: createCampaignAsset
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAssetRequest"
+      responses:
+        "201":
+          description: Asset registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetLibraryItem"
+  /campaigns/{campaignId}/assets/{assetId}:
+    get:
+      summary: Consultar asset de campaña
+      operationId: getCampaignAsset
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - name: assetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Asset registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssetLibraryItem"
+        "404":
+          description: Asset no encontrado
+  /campaigns/{campaignId}/maps:
+    get:
+      summary: Listar mapas
+      operationId: listMaps
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Lista de mapas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BattleMap"
+  /campaigns/{campaignId}/encounters:
+    post:
+      summary: Crear encuentro
+      operationId: createEncounter
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEncounterRequest"
+      responses:
+        "201":
+          description: Encuentro creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Encounter"
+  /campaigns/{campaignId}/encounters/active:
+    get:
+      summary: Obtener encuentro activo por escena
+      operationId: getActiveEncounter
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - name: sceneId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Encuentro activo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Encounter"
+        "404":
+          description: No hay encuentro activo
+  /campaigns/{campaignId}/encounters/{encounterId}/turn/advance:
+    post:
+      summary: Avanzar turno del encuentro
+      operationId: advanceEncounterTurn
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - name: encounterId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Encuentro actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Encounter"
+  /campaigns/{campaignId}/dice/roll:
+    post:
+      summary: Ejecutar tirada
+      operationId: rollDice
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RollDiceRequest"
+      responses:
+        "200":
+          description: Resultado de tirada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiceRoll"
+  /campaigns/{campaignId}/npcs:
+    get:
+      summary: Listar NPCs
+      operationId: listNpcs
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Lista de NPCs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/NPC"
+    post:
+      summary: Crear NPC
+      operationId: createNpc
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNPCRequest"
+      responses:
+        "201":
+          description: NPC creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NPC"
+  /campaigns/{campaignId}/npcs/{npcId}/token:
+    post:
+      summary: Convertir NPC en token
+      operationId: createNpcToken
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - name: npcId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEntityTokenRequest"
+      responses:
+        "201":
+          description: Token creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameToken"
+  /campaigns/{campaignId}/enemies:
+    get:
+      summary: Listar enemigos
+      operationId: listEnemies
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Lista de enemigos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Enemy"
+    post:
+      summary: Crear enemigo
+      operationId: createEnemy
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEnemyRequest"
+      responses:
+        "201":
+          description: Enemigo creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Enemy"
+  /campaigns/{campaignId}/enemies/{enemyId}/token:
+    post:
+      summary: Convertir enemigo en token
+      operationId: createEnemyToken
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - name: enemyId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEntityTokenRequest"
+      responses:
+        "201":
+          description: Token creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GameToken"
+  /campaigns/{campaignId}/ai/generate:
+    post:
+      summary: Generar borrador asistido por IA
+      operationId: generateWithAi
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiGenerateRequest"
+      responses:
+        "200":
+          description: Borrador generado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiGenerateResponse"
+  /campaigns/{campaignId}/ai/runs:
+    get:
+      summary: Listar ejecuciones de IA
+      operationId: listAiPromptRuns
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Lista de ejecuciones registradas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiPromptRun"
+  /campaigns/{campaignId}/ai/runs/{promptRunId}/approve:
+    post:
+      summary: Aprobar o rechazar borrador de IA
+      operationId: approveAiPromptRun
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - name: promptRunId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiApproveRequest"
+      responses:
+        "200":
+          description: Estado de revisión actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiApproveResponse"
+components:
+  parameters:
+    CampaignId:
+      name: campaignId
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    World:
+      type: object
+      required: [id, name, description, systemTags]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        systemTags:
+          type: array
+          items:
+            type: string
+    CreateWorldRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        systemTags:
+          type: array
+          items:
+            type: string
+    Campaign:
+      type: object
+      required: [id, name, ruleset, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        ruleset:
+          type: string
+          example: dnd5e
+        status:
+          type: string
+          enum: [draft, active, archived]
+    CreateCampaignRequest:
+      type: object
+      required: [name, ruleset]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        ruleset:
+          type: string
+        worldId:
+          type: string
+        status:
+          type: string
+          enum: [draft, active, archived]
+    GameSession:
+      type: object
+      required: [id, campaignId, title, summaryPublic, summaryPrivate]
+      properties:
+        id:
+          type: string
+        campaignId:
+          type: string
+        title:
+          type: string
+        scheduledAt:
+          type: string
+        summaryPublic:
+          type: string
+        summaryPrivate:
+          type: string
+    CreateGameSessionRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        scheduledAt:
+          type: string
+    DemoReadiness:
+      type: object
+      required:
+        - version
+        - releaseName
+        - allReady
+        - readyCount
+        - totalCount
+        - items
+        - routes
+        - commands
+        - updatedAt
+      properties:
+        version:
+          type: string
+          example: 1.0.0
+        releaseName:
+          type: string
+        allReady:
+          type: boolean
+        readyCount:
+          type: integer
+        totalCount:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoReadinessItem"
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/DemoRoute"
+        commands:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          type: string
+          format: date-time
+    DemoReadinessItem:
+      type: object
+      required: [id, label, status, evidence]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+          enum: [ready, warning, blocked]
+        evidence:
+          type: string
+    DemoRoute:
+      type: object
+      required: [label, url]
+      properties:
+        label:
+          type: string
+        url:
+          type: string
+    CampaignPackage:
+      type: object
+      required:
+        - kind
+        - schemaVersion
+        - packageId
+        - appVersion
+        - exportedAt
+        - manifest
+        - data
+      properties:
+        kind:
+          type: string
+          const: dm-interactive-table.campaign-package
+        schemaVersion:
+          type: integer
+          const: 1
+        packageId:
+          type: string
+        appVersion:
+          type: string
+          example: 2.0.0-alpha.20
+        exportedAt:
+          type: string
+          format: date-time
+        manifest:
+          $ref: "#/components/schemas/CampaignPackageManifest"
+        data:
+          $ref: "#/components/schemas/CampaignPackageData"
+    CampaignPackageManifest:
+      type: object
+      required:
+        - campaignId
+        - campaignName
+        - rulesetId
+        - exportedBy
+        - contentProfile
+        - assetMode
+        - counts
+      properties:
+        campaignId:
+          type: string
+        campaignName:
+          type: string
+        rulesetId:
+          type: string
+        exportedBy:
+          type: string
+        contentProfile:
+          type: string
+          enum: [dm-private]
+        assetMode:
+          type: string
+          enum: [metadata-only]
+        counts:
+          $ref: "#/components/schemas/CampaignPackageCounts"
+    CampaignPackageCounts:
+      type: object
+      required:
+        - worlds
+        - campaigns
+        - sessions
+        - scenes
+        - tokens
+        - npcs
+        - enemies
+        - promptRuns
+        - assets
+        - audioPresets
+        - audioCues
+      properties:
+        worlds:
+          type: integer
+        campaigns:
+          type: integer
+        sessions:
+          type: integer
+        scenes:
+          type: integer
+        tokens:
+          type: integer
+        npcs:
+          type: integer
+        enemies:
+          type: integer
+        promptRuns:
+          type: integer
+        assets:
+          type: integer
+        audioPresets:
+          type: integer
+        audioCues:
+          type: integer
+    CampaignPackageData:
+      type: object
+      required:
+        - worlds
+        - campaigns
+        - sessions
+        - activeScene
+        - npcs
+        - enemies
+        - promptRuns
+        - rulesets
+        - assets
+        - audioScenes
+      properties:
+        worlds:
+          type: array
+          items:
+            $ref: "#/components/schemas/World"
+        campaigns:
+          type: array
+          items:
+            $ref: "#/components/schemas/Campaign"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/GameSession"
+        activeScene:
+          type: object
+          additionalProperties: true
+        npcs:
+          type: array
+          items:
+            $ref: "#/components/schemas/NPC"
+        enemies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Enemy"
+        promptRuns:
+          type: array
+          items:
+            $ref: "#/components/schemas/AiPromptRun"
+        rulesets:
+          type: array
+          items:
+            $ref: "#/components/schemas/RulesetSummary"
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignPackageAsset"
+        audioScenes:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignPackageAudioScene"
+    CampaignPackageAudioScene:
+      type: object
+      required: [sceneId, sceneName, presetCount, cueCount, presetIds, assetIds]
+      properties:
+        sceneId:
+          type: string
+        sceneName:
+          type: string
+        presetCount:
+          type: integer
+        cueCount:
+          type: integer
+        presetIds:
+          type: array
+          items:
+            type: string
+        assetIds:
+          type: array
+          items:
+            type: string
+        transitionMode:
+          type: string
+          enum: [cut, fade, crossfade]
+    CampaignPackageAsset:
+      type: object
+      required: [id, type, usage, name, source, referencedBy]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [map, token, token-swatch, music, sound, effect, portrait]
+        usage:
+          type: string
+          enum: [scene-map, token, ambience, effect, portrait]
+        name:
+          type: string
+        url:
+          type: string
+        inlineValue:
+          type: string
+        source:
+          type: string
+          enum: [asset-storage, local-url, generated, metadata]
+        storageAssetId:
+          type: string
+        referencedBy:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    CampaignPackageImportRequest:
+      type: object
+      required: [package]
+      properties:
+        version:
+          type: integer
+          const: 1
+        mode:
+          type: string
+          enum: [validate, preview, apply-copy]
+        package:
+          $ref: "#/components/schemas/CampaignPackage"
+        requestId:
+          type: string
+    CampaignPackageImportReport:
+      type: object
+      required: [ok, requestId, mode, importable, applied, issues, checkedAt]
+      properties:
+        ok:
+          type: boolean
+        requestId:
+          type: string
+        mode:
+          type: string
+          enum: [validate, preview, apply-copy]
+        importable:
+          type: boolean
+        applied:
+          type: boolean
+        packageId:
+          type: string
+        campaignId:
+          type: string
+        campaignName:
+          type: string
+        schemaVersion:
+          type: integer
+        counts:
+          $ref: "#/components/schemas/CampaignPackageCounts"
+        appliedResources:
+          $ref: "#/components/schemas/CampaignPackageAppliedResources"
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/CampaignPackageImportIssue"
+        checkedAt:
+          type: string
+          format: date-time
+    CampaignPackageAppliedResources:
+      type: object
+      required: [sessionIds, npcIds, enemyIds, promptRunIds, assetIds]
+      properties:
+        worldId:
+          type: string
+        campaignId:
+          type: string
+        sessionIds:
+          type: array
+          items:
+            type: string
+        sceneId:
+          type: string
+        npcIds:
+          type: array
+          items:
+            type: string
+        enemyIds:
+          type: array
+          items:
+            type: string
+        promptRunIds:
+          type: array
+          items:
+            type: string
+        assetIds:
+          type: array
+          items:
+            type: string
+    AssetLibraryType:
+      type: string
+      enum: [map, token, portrait, music, sound, effect]
+    AssetProvider:
+      type: string
+      enum: [local, remote, generated]
+    AssetStatus:
+      type: string
+      enum: [available, missing, archived]
+    AssetLibraryResponse:
+      type: object
+      required: [version, campaignId, assets, counts, updatedAt]
+      properties:
+        version:
+          type: integer
+          const: 1
+        campaignId:
+          type: string
+        assets:
+          type: array
+          items:
+            $ref: "#/components/schemas/AssetLibraryItem"
+        counts:
+          $ref: "#/components/schemas/AssetLibraryCounts"
+        updatedAt:
+          type: string
+          format: date-time
+    AssetLibraryCounts:
+      type: object
+      required: [map, token, portrait, music, sound, effect]
+      properties:
+        map:
+          type: integer
+        token:
+          type: integer
+        portrait:
+          type: integer
+        music:
+          type: integer
+        sound:
+          type: integer
+        effect:
+          type: integer
+    AssetLibraryItem:
+      type: object
+      required:
+        - id
+        - campaignId
+        - type
+        - name
+        - url
+        - provider
+        - status
+        - metadata
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        campaignId:
+          type: string
+        type:
+          $ref: "#/components/schemas/AssetLibraryType"
+        name:
+          type: string
+        url:
+          type: string
+        provider:
+          $ref: "#/components/schemas/AssetProvider"
+        status:
+          $ref: "#/components/schemas/AssetStatus"
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CreateAssetRequest:
+      type: object
+      required: [type, name, url]
+      properties:
+        version:
+          type: integer
+          const: 1
+        type:
+          $ref: "#/components/schemas/AssetLibraryType"
+        name:
+          type: string
+        url:
+          type: string
+        provider:
+          $ref: "#/components/schemas/AssetProvider"
+        status:
+          $ref: "#/components/schemas/AssetStatus"
+        metadata:
+          type: object
+          additionalProperties: true
+        requestId:
+          type: string
+    CampaignPackageImportIssue:
+      type: object
+      required: [severity, code, message]
+      properties:
+        severity:
+          type: string
+          enum: [warning, error]
+        code:
+          type: string
+        message:
+          type: string
+    RulesetSummary:
+      type: object
+      required: [id, name, version, description, capabilities, tags]
+      properties:
+        id:
+          type: string
+          example: dnd5e
+        name:
+          type: string
+        version:
+          type: string
+        description:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+            enum: [d20-checks, advantage, conditions, initiative, character-sheet]
+        tags:
+          type: array
+          items:
+            type: string
+    RulesetDefinition:
+      allOf:
+        - $ref: "#/components/schemas/RulesetSummary"
+        - type: object
+          required: [dice, combat, characterSheet]
+          properties:
+            dice:
+              type: object
+              required: [notationExamples, checks]
+              properties:
+                notationExamples:
+                  type: array
+                  items:
+                    type: string
+                checks:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/DiceCheckPreset"
+            combat:
+              type: object
+              required: [initiativeFormula, conditions]
+              properties:
+                initiativeFormula:
+                  type: string
+                  example: d20+DEX
+                conditions:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/RulesetCondition"
+            characterSheet:
+              type: object
+              required: [sections]
+              properties:
+                sections:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/CharacterSheetSection"
+    CampaignRulesetResponse:
+      type: object
+      required:
+        - campaignId
+        - requestedRulesetId
+        - resolvedRulesetId
+        - fallbackUsed
+        - ruleset
+      properties:
+        campaignId:
+          type: string
+        requestedRulesetId:
+          type: string
+        resolvedRulesetId:
+          type: string
+        fallbackUsed:
+          type: boolean
+        ruleset:
+          $ref: "#/components/schemas/RulesetDefinition"
+    DiceCheckPreset:
+      type: object
+      required: [id, label, formula, description]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        formula:
+          type: string
+        description:
+          type: string
+    RulesetCondition:
+      type: object
+      required: [id, label, publicDescription, rulesHint]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        publicDescription:
+          type: string
+        rulesHint:
+          type: string
+    CharacterSheetSection:
+      type: object
+      required: [id, title, fields]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/CharacterSheetField"
+    CharacterSheetField:
+      type: object
+      required: [id, label, type]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        type:
+          type: string
+          enum: [text, number, textarea, select]
+        defaultValue:
+          oneOf:
+            - type: string
+            - type: number
+        options:
+          type: array
+          items:
+            type: string
+    BattleMap:
+      type: object
+      required: [id, name, imageUrl, gridSize, width, height]
+      properties:
+        id:
+          type: string
+        assetId:
+          type: string
+        name:
+          type: string
+        imageUrl:
+          type: string
+        gridSize:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+    Scene:
+      type: object
+      required: [id, name, map, tokens]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        narrativeText:
+          type: string
+        map:
+          $ref: "#/components/schemas/BattleMap"
+        tokens:
+          type: array
+          items:
+            $ref: "#/components/schemas/GameToken"
+    CreateSceneRequest:
+      type: object
+      required: [name, battleMapId]
+      properties:
+        name:
+          type: string
+        battleMapId:
+          type: string
+        narrativeText:
+          type: string
+    GameToken:
+      type: object
+      required: [id, name, type, x, y, size, visible]
+      properties:
+        id:
+          type: string
+        imageAssetId:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [player, enemy, npc, object]
+        x:
+          type: number
+        y:
+          type: number
+        size:
+          type: number
+        color:
+          type: string
+        visible:
+          type: boolean
+    CreateEncounterRequest:
+      type: object
+      required: [sceneId, name, combatants]
+      properties:
+        version:
+          type: integer
+          const: 1
+        sceneId:
+          type: string
+        name:
+          type: string
+        combatants:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateEncounterCombatant"
+    CreateEncounterCombatant:
+      type: object
+      required: [entityType, name]
+      properties:
+        tokenId:
+          type: string
+        entityType:
+          type: string
+          enum: [player, enemy, npc, object]
+        entityId:
+          type: string
+        name:
+          type: string
+        initiative:
+          type: number
+        currentHp:
+          type: integer
+        temporaryHp:
+          type: integer
+        conditions:
+          type: array
+          items:
+            type: string
+    Encounter:
+      type: object
+      required: [id, sceneId, status, roundNumber, combatants]
+      properties:
+        id:
+          type: string
+        campaignId:
+          type: string
+        sceneId:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [draft, active, completed]
+        roundNumber:
+          type: integer
+        activeCombatantId:
+          type: string
+        combatants:
+          type: array
+          items:
+            $ref: "#/components/schemas/Combatant"
+    Combatant:
+      type: object
+      required: [id, entityType, name, initiative, turnOrder, conditions]
+      properties:
+        id:
+          type: string
+        tokenId:
+          type: string
+        entityType:
+          type: string
+          enum: [player, enemy, npc, object]
+        name:
+          type: string
+        initiative:
+          type: number
+        turnOrder:
+          type: integer
+        currentHp:
+          type: integer
+        temporaryHp:
+          type: integer
+        conditions:
+          type: array
+          items:
+            type: string
+    RollDiceRequest:
+      type: object
+      required: [formula, visibility]
+      properties:
+        formula:
+          type: string
+          example: 2d6+3
+        visibility:
+          type: string
+          enum: [public, private, dm]
+        purpose:
+          type: string
+    DiceRoll:
+      type: object
+      required: [id, formula, normalizedFormula, output, resultTotal, breakdown, visibility]
+      properties:
+        id:
+          type: string
+        formula:
+          type: string
+        normalizedFormula:
+          type: string
+        output:
+          type: string
+        resultTotal:
+          type: integer
+        breakdown:
+          type: array
+          items:
+            type: object
+        visibility:
+          type: string
+    AiGenerateRequest:
+      type: object
+      required: [purpose, prompt]
+      properties:
+        version:
+          type: integer
+          const: 1
+        campaignId:
+          type: string
+        purpose:
+          type: string
+          enum: [npc, scene, villain, event, summary, encounter, campaign]
+        prompt:
+          type: string
+          maxLength: 4000
+        contextIds:
+          type: array
+          items:
+            type: string
+        requestId:
+          type: string
+    AiGenerateResponse:
+      type: object
+      required: [promptRunId, provider, model, purpose, draft, warnings, approved, createdAt]
+      properties:
+        promptRunId:
+          type: string
+        provider:
+          type: string
+          enum: [local-draft]
+        model:
+          type: string
+        purpose:
+          type: string
+          enum: [npc, scene, villain, event, summary, encounter, campaign]
+        draft:
+          type: object
+          additionalProperties: true
+        warnings:
+          type: array
+          items:
+            type: string
+        approved:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    AiPromptRun:
+      type: object
+      required:
+        - id
+        - version
+        - campaignId
+        - requestId
+        - purpose
+        - prompt
+        - contextIds
+        - provider
+        - model
+        - draft
+        - warnings
+        - approved
+        - requestedBy
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+        version:
+          type: integer
+          const: 1
+        campaignId:
+          type: string
+        requestId:
+          type: string
+        purpose:
+          type: string
+          enum: [npc, scene, villain, event, summary, encounter, campaign]
+        prompt:
+          type: string
+        contextIds:
+          type: array
+          items:
+            type: string
+        provider:
+          type: string
+          enum: [local-draft]
+        model:
+          type: string
+        draft:
+          type: object
+          additionalProperties: true
+        warnings:
+          type: array
+          items:
+            type: string
+        approved:
+          type: boolean
+        requestedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        approvedAt:
+          type: string
+          format: date-time
+    AiApproveRequest:
+      type: object
+      required: [approved]
+      properties:
+        version:
+          type: integer
+          const: 1
+        approved:
+          type: boolean
+        requestId:
+          type: string
+    AiApproveResponse:
+      type: object
+      required: [promptRunId, approved, updatedAt]
+      properties:
+        promptRunId:
+          type: string
+        approved:
+          type: boolean
+        approvedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    NPC:
+      type: object
+      required: [id, campaignId, name, role, motivation, voice, publicNotes]
+      properties:
+        id:
+          type: string
+        campaignId:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        motivation:
+          type: string
+        voice:
+          type: string
+        publicNotes:
+          type: string
+        privateNotes:
+          type: string
+        secrets:
+          type: array
+          items:
+            type: string
+    CreateNPCRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        role:
+          type: string
+        motivation:
+          type: string
+        voice:
+          type: string
+        publicNotes:
+          type: string
+        privateNotes:
+          type: string
+        secrets:
+          type: array
+          items:
+            type: string
+    Enemy:
+      type: object
+      required: [id, campaignId, name, creatureType, maxHp, currentHp, armorClass]
+      properties:
+        id:
+          type: string
+        campaignId:
+          type: string
+        name:
+          type: string
+        creatureType:
+          type: string
+        maxHp:
+          type: integer
+        currentHp:
+          type: integer
+        armorClass:
+          type: integer
+        challengeRating:
+          type: string
+    CreateEnemyRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        creatureType:
+          type: string
+        maxHp:
+          type: integer
+        currentHp:
+          type: integer
+        armorClass:
+          type: integer
+        challengeRating:
+          type: string
+    CreateEntityTokenRequest:
+      type: object
+      required: [sceneId]
+      properties:
+        sceneId:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        size:
+          type: number
+        color:
+          type: string
+        visible:
+          type: boolean

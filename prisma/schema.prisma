@@ -1,0 +1,403 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../server/src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum CampaignRole {
+  DM
+  PLAYER
+  VIEWER
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum SceneVisibility {
+  PUBLIC
+  DM
+  SECRET
+}
+
+enum TokenType {
+  PLAYER
+  ENEMY
+  NPC
+  OBJECT
+}
+
+enum EncounterStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+}
+
+enum AssetType {
+  MAP
+  TOKEN
+  PORTRAIT
+  MUSIC
+  SOUND
+  EFFECT
+}
+
+enum RollVisibility {
+  PUBLIC
+  PRIVATE
+  DM
+}
+
+model User {
+  id                  String              @id @default(uuid())
+  displayName         String
+  email               String?             @unique
+  role                UserRole            @default(USER)
+  campaignMemberships CampaignMember[]
+  characters          PlayerCharacter[]   @relation("CharacterOwner")
+  diceRolls           DiceRoll[]
+  promptRuns          PromptRun[]
+  auditLogs           AuditLog[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+}
+
+model World {
+  id          String     @id @default(uuid())
+  name        String
+  description String     @default("")
+  systemTags  String[]   @default([])
+  campaigns   Campaign[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Campaign {
+  id             String             @id @default(uuid())
+  worldId        String?
+  world          World?             @relation(fields: [worldId], references: [id], onDelete: SetNull)
+  name           String
+  description    String             @default("")
+  ruleset        String             @default("dnd5e")
+  status         CampaignStatus     @default(DRAFT)
+  settings       Json?
+  members        CampaignMember[]
+  sessions       GameSession[]
+  maps           BattleMap[]
+  scenes         Scene[]
+  characters     PlayerCharacter[]
+  npcs           NPC[]
+  enemies        Enemy[]
+  encounters     Encounter[]
+  journalEntries JournalEntry[]
+  assets         Asset[]
+  diceRolls      DiceRoll[]
+  promptRuns     PromptRun[]
+  auditLogs      AuditLog[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([worldId])
+  @@index([status])
+}
+
+model CampaignMember {
+  id          String       @id @default(uuid())
+  campaignId  String
+  userId      String
+  role        CampaignRole @default(PLAYER)
+  permissions Json?
+  campaign    Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([campaignId, userId])
+  @@index([userId])
+}
+
+model GameSession {
+  id             String     @id @default(uuid())
+  campaignId     String
+  title          String
+  scheduledAt    DateTime?
+  startedAt      DateTime?
+  endedAt        DateTime?
+  summaryPublic  String     @default("")
+  summaryPrivate String     @default("")
+  campaign       Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  scenes         Scene[]
+  diceRolls      DiceRoll[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([campaignId])
+  @@index([scheduledAt])
+}
+
+model Scene {
+  id            String          @id @default(uuid())
+  campaignId    String
+  sessionId     String?
+  battleMapId   String
+  name          String
+  narrativeText String          @default("")
+  dmNotes       String          @default("")
+  isActive      Boolean         @default(false)
+  visibility    SceneVisibility @default(PUBLIC)
+  sceneState    Json?
+  campaign      Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  session       GameSession?    @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  battleMap     BattleMap       @relation(fields: [battleMapId], references: [id], onDelete: Restrict)
+  tokens        GameToken[]
+  encounters    Encounter[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([campaignId, isActive])
+  @@index([sessionId])
+  @@index([battleMapId])
+}
+
+model BattleMap {
+  id         String     @id @default(uuid())
+  campaignId String
+  assetId    String?
+  name       String
+  imageUrl   String
+  gridSize   Int
+  width      Int
+  height     Int
+  scale      Float      @default(1)
+  metadata   Json?
+  campaign   Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  asset      Asset?     @relation("MapAsset", fields: [assetId], references: [id], onDelete: SetNull)
+  scenes     Scene[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([campaignId])
+  @@index([assetId])
+}
+
+model GameToken {
+  id           String    @id @default(uuid())
+  sceneId      String
+  entityType   TokenType
+  entityId     String?
+  name         String
+  x            Float
+  y            Float
+  size         Float     @default(1)
+  rotation     Float     @default(0)
+  color        String
+  imageAssetId String?
+  visible      Boolean   @default(true)
+  locked       Boolean   @default(false)
+  state        Json?
+  scene        Scene     @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  imageAsset   Asset?    @relation("TokenImageAsset", fields: [imageAssetId], references: [id], onDelete: SetNull)
+  combatants   Combatant[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([sceneId])
+  @@index([entityType, entityId])
+  @@index([imageAssetId])
+}
+
+model PlayerCharacter {
+  id          String    @id @default(uuid())
+  campaignId  String
+  ownerUserId String?
+  name        String
+  ancestry    String    @default("")
+  className   String    @default("")
+  level       Int       @default(1)
+  maxHp       Int       @default(1)
+  currentHp   Int       @default(1)
+  armorClass  Int       @default(10)
+  rulesData   Json?
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  owner       User?     @relation("CharacterOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([campaignId])
+  @@index([ownerUserId])
+}
+
+model NPC {
+  id           String    @id @default(uuid())
+  campaignId   String
+  name         String
+  role         String    @default("")
+  motivation   String    @default("")
+  voice        String    @default("")
+  publicNotes  String    @default("")
+  privateNotes String    @default("")
+  secrets      Json?
+  rulesData    Json?
+  campaign     Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([campaignId])
+}
+
+model Enemy {
+  id              String    @id @default(uuid())
+  campaignId      String
+  name            String
+  creatureType    String    @default("")
+  maxHp           Int       @default(1)
+  currentHp       Int       @default(1)
+  armorClass      Int       @default(10)
+  challengeRating String    @default("")
+  rulesData       Json?
+  campaign        Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([campaignId])
+}
+
+model Encounter {
+  id                String           @id @default(uuid())
+  campaignId        String
+  sceneId           String?
+  name              String
+  status            EncounterStatus  @default(DRAFT)
+  roundNumber       Int              @default(1)
+  activeCombatantId String?
+  rulesData         Json?
+  campaign          Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  scene             Scene?           @relation(fields: [sceneId], references: [id], onDelete: SetNull)
+  combatants        Combatant[]      @relation("EncounterCombatants")
+  activeCombatant   Combatant?       @relation("ActiveCombatant", fields: [activeCombatantId], references: [id], onDelete: SetNull)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  @@index([campaignId])
+  @@index([sceneId])
+  @@index([status])
+}
+
+model Combatant {
+  id                    String      @id @default(uuid())
+  encounterId           String
+  tokenId               String?
+  entityType            TokenType
+  entityId              String?
+  initiative            Float?
+  turnOrder             Int?
+  conditions            Json?
+  currentHp             Int?
+  temporaryHp           Int?
+  encounter             Encounter   @relation("EncounterCombatants", fields: [encounterId], references: [id], onDelete: Cascade)
+  token                 GameToken?  @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+  activeForEncounters   Encounter[] @relation("ActiveCombatant")
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  @@index([encounterId])
+  @@index([tokenId])
+}
+
+model DiceRoll {
+  id          String         @id @default(uuid())
+  campaignId  String
+  sessionId   String?
+  userId      String?
+  formula     String
+  resultTotal Int
+  breakdown   Json
+  visibility  RollVisibility @default(PUBLIC)
+  purpose     String         @default("")
+  campaign    Campaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  session     GameSession?   @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([campaignId, sessionId, createdAt])
+  @@index([userId])
+}
+
+model Asset {
+  id                 String      @id @default(uuid())
+  campaignId         String
+  type               AssetType
+  name               String
+  url                String
+  metadata           Json?
+  campaign           Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  maps               BattleMap[] @relation("MapAsset")
+  tokenImageUsages   GameToken[] @relation("TokenImageAsset")
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@index([campaignId])
+  @@index([type])
+}
+
+model PromptRun {
+  id            String    @id @default(uuid())
+  campaignId    String
+  userId        String?
+  provider      String
+  model         String
+  purpose       String
+  inputSummary  String    @default("")
+  outputSummary String    @default("")
+  approved      Boolean   @default(false)
+  metadata      Json?
+  campaign      Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([campaignId, createdAt])
+  @@index([userId])
+}
+
+model JournalEntry {
+  id          String    @id @default(uuid())
+  campaignId  String
+  title       String
+  body        String
+  visibility  SceneVisibility @default(DM)
+  tags        String[]  @default([])
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([campaignId])
+}
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  campaignId  String
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String?
+  before      Json?
+  after       Json?
+  campaign    Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  @@index([campaignId, createdAt])
+  @@index([userId])
+}
