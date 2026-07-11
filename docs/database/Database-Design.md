@@ -325,6 +325,12 @@ Registro de acciones relevantes.
 - `PromptRun(campaignId, createdAt)`
 - `AuditLog(campaignId, createdAt)`
 
+La migración `20260711143000_runtime_invariants` añade dos índices parciales que
+Prisma no puede expresar en el schema: una sola `Scene.isActive=true` por
+campaña y una sola `GameSession.phase=LIVE` por campaña. Si existen duplicados,
+el deploy falla y exige corregir los datos en lugar de elegir un registro de
+forma silenciosa.
+
 ## Decisiones pendientes
 
 - Storage local vs S3-compatible.
@@ -333,7 +339,7 @@ Registro de acciones relevantes.
 
 ## Implementación actual
 
-La implementación vive en `prisma/schema.prisma` y usa PostgreSQL como destino formal. Session Workflow se incorpora en `prisma/migrations/20260710183000_session_workflow/migration.sql`.
+La implementación vive en `prisma/schema.prisma` y usa PostgreSQL como destino formal. Session Workflow se incorpora en `prisma/migrations/20260710183000_session_workflow/migration.sql`; las invariantes runtime se aplican en `prisma/migrations/20260711143000_runtime_invariants/migration.sql`.
 
 El backend usa una capa de repositorio:
 

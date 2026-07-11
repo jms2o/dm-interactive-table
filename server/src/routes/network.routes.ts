@@ -4,7 +4,11 @@ import type {
   NetworkInfoResponse,
   NetworkOrigin,
 } from "../../../shared/types/auth";
+import type { NetworkDiagnosticResponse } from "../../../shared/types/device-experience";
+import { APP_VERSION } from "../../../shared/version";
 import { env } from "../config/env";
+import { runtimeMetrics } from "../observability/metrics";
+import { persistenceMode } from "../persistence";
 
 export const networkRouter = Router();
 
@@ -45,7 +49,24 @@ networkRouter.get("/network", (request, response) => {
     (origin, index) =>
       origins.findIndex((candidate) => candidate.url === origin.url) === index,
   );
-  const payload: NetworkInfoResponse = { origins: uniqueOrigins };
+  const payload: NetworkInfoResponse = {
+    origins: uniqueOrigins,
+    requestId: request.requestId,
+    serverTime: new Date().toISOString(),
+  };
+  response.status(200).json(payload);
+});
+
+networkRouter.get("/network/diagnostics", (request, response) => {
+  const payload: NetworkDiagnosticResponse = {
+    version: 1,
+    requestId: request.requestId,
+    appVersion: APP_VERSION,
+    serverTime: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+    persistence: persistenceMode,
+    metrics: runtimeMetrics.snapshot(),
+  };
   response.status(200).json(payload);
 });
 

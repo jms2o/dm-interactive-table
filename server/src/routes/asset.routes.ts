@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import type { CreateAssetRequest } from "../../../shared/types/asset";
 import { assetService } from "../modules/asset/asset.service";
+import { AssetPolicyError } from "../modules/asset/asset-policy";
 
 export const assetRouter = Router({ mergeParams: true });
 
@@ -17,8 +18,8 @@ const assetTypeSchema = z.enum([
 const createAssetSchema = z.object({
   version: z.literal(1).default(1),
   type: assetTypeSchema,
-  name: z.string().min(1),
-  url: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+  url: z.string().trim().min(1).max(2048),
   provider: z.enum(["local", "remote", "generated"]).optional(),
   status: z.enum(["available", "missing", "archived"]).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
@@ -71,8 +72,12 @@ assetRouter.post("/", (request, response) => {
       } satisfies CreateAssetRequest),
     );
   } catch (error) {
-    response.status(404).json({
+    response.status(error instanceof AssetPolicyError ? 422 : 404).json({
       ok: false,
+      code:
+        error instanceof AssetPolicyError
+          ? error.code
+          : "ASSET_CREATE_FAILED",
       error: error instanceof Error ? error.message : "Asset create failed",
     });
   }
@@ -81,4 +86,3 @@ assetRouter.post("/", (request, response) => {
 function campaignIdFromRequest(request: Request) {
   return String((request.params as Record<string, string>).campaignId);
 }
-

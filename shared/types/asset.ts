@@ -46,6 +46,16 @@ export interface AssetLibraryResponse {
   campaignId: string;
   assets: AssetLibraryItem[];
   counts: Record<AssetLibraryType, number>;
+  policy: AssetPolicyLimits;
   updatedAt: string;
 }
 
+export interface AssetPolicyLimits {
+  maxAssetsPerCampaign: number;
+  maxNameCharacters: number;
+  maxUrlCharacters: number;
+  maxMetadataBytes: number;
+  maxMapDimensionPixels: number;
+  maxAudioDurationSeconds: number;
+  maxDeclaredBytes: Record<AssetLibraryType, number>;
+}

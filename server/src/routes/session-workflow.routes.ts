@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import type { UpdatePlayerCharacterSheet } from "../../../shared/types/session-workflow";
 import { sessionWorkflowService } from "../modules/session/session-workflow.service";
+import { authService } from "../security";
 
 export const sessionWorkflowRouter = Router({ mergeParams: true });
 
@@ -66,12 +67,17 @@ sessionWorkflowRouter.post("/sessions/:sessionId/end", async (request, response)
   }
 
   try {
+    const campaignId = campaignIdFromRequest(request);
+    const session = await sessionWorkflowService.endSession(
+      campaignId,
+      sessionIdFromRequest(request),
+      parsed.data,
+    );
+    await authService.revokeTableAccess(request.auth!, campaignId, {
+      disconnect: false,
+    });
     response.status(200).json({
-      session: await sessionWorkflowService.endSession(
-        campaignIdFromRequest(request),
-        sessionIdFromRequest(request),
-        parsed.data,
-      ),
+      session,
     });
   } catch (error) {
     sendWorkflowError(response, error);

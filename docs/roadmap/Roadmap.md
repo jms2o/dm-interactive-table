@@ -307,10 +307,20 @@ Estado: completado.
 
 Estado: completado.
 
-### Siguiente versión - Table Device Experience
+### 2.0.0-alpha.23 - Table Device Experience
 
 - Calibración física del mapa y perfiles de display.
 - Wake Lock durante partidas y recuperación al volver a primer plano.
 - Safe areas y controles optimizados para televisión, tablet y teléfono.
 - Diagnóstico de red, latencia y calidad de sincronización por dispositivo.
-- Permisos de movimiento de token vinculados al personaje.
+- Fullscreen/kiosk, backup visible, límites de assets y benchmark 4K.
+- Gate integral de release, JWT/CSRF y observabilidad estructurada.
+
+Estado: completado.
+
+### Siguiente versión - Player Token Ownership
+
+- Asignación explícita de personaje y token por el DM.
+- Movimiento del jugador limitado a su token asignado.
+- Persistencia de ownership en PostgreSQL y paquete de campaña.
+- Pruebas con dos jugadores y reconexión simultánea.

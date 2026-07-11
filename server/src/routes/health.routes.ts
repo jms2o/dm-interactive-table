@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { persistenceMode } from "../persistence";
+import { runtimeMetrics } from "../observability/metrics";
 
 export const healthRouter = Router();
 
@@ -10,5 +11,6 @@ healthRouter.get("/health", (_request, response) => {
     persistence: persistenceMode,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
+    metrics: runtimeMetrics.snapshot(),
   });
 });

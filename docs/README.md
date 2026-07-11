@@ -43,7 +43,7 @@ DM Interactive Table evolucionará de una mesa digital para una campaña concret
 
 ## Estado actual
 
-Versión documental: `2.0.0-alpha.22`
+Versión documental: `2.0.0-alpha.23`
 
 El repositorio ya contiene la estructura raíz definida por la guía inicial:
 

@@ -2,6 +2,30 @@
 
 Los cambios relevantes del producto se registran en este archivo.
 
+## [2.0.0-alpha.23] - 2026-07-11
+
+### Añadido
+
+- Perfiles TV, tableta y teléfono con calibración física en cm o pulgadas.
+- Safe areas, fullscreen/kiosk, Wake Lock recuperable y cursor de display.
+- Diagnóstico por dispositivo de latencia HTTP/Socket.IO, FPS, viewport y DPR.
+- Política y pruebas de límites de assets; benchmark de visión de referencia.
+- Backups exportables y restauración segura como copia desde el topbar del DM.
+- Logs JSON con `requestId` y métricas de HTTP, sockets, persistencia y snapshots.
+- `release:check`, gate raíz integral y automatización de GitHub Release.
+- npm workspaces con lockfile único y TypeScript 6 alineado.
+
+### Seguridad
+
+- JWT HS256 exige issuer y audience al firmar y verificar.
+- Mutaciones cross-site se rechazan mediante Origin y Fetch Metadata.
+- Finalizar una sesión revoca sus códigos sin borrar la pantalla de cierre.
+
+### Cambiado
+
+- El workspace y Konva se cargan de forma diferida para reducir el bundle inicial.
+- La versión de producto, paquetes, OpenAPI y readiness avanza a `2.0.0-alpha.23`.
+
 ## [2.0.0-alpha.22] - 2026-07-10
 
 ### Añadido

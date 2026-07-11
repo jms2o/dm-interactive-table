@@ -12,7 +12,6 @@ process.env.TS_NODE_PROJECT = path.join(rootDir, "server", "tsconfig.json");
 
 require(path.join(
   rootDir,
-  "server",
   "node_modules",
   "ts-node",
   "register",
@@ -36,6 +35,18 @@ const { LocalIdentityRepository } = require(path.join(
   "security",
   "identity.repository",
 ));
+const jwt = require(path.join(
+  rootDir,
+  "node_modules",
+  "jsonwebtoken",
+));
+const { evaluateBrowserMutation } = require(path.join(
+  rootDir,
+  "server",
+  "src",
+  "security",
+  "csrf",
+));
 
 test("initial DM setup uses a bcrypt hash and survives repository reload", async () => {
   const dataDir = path.join(rootDir, "tmp", `security-account-${process.pid}`);
@@ -51,6 +62,9 @@ test("initial DM setup uses a bcrypt hash and survives repository reload", async
     });
     assert.equal(registered.principal.role, "dm");
     assert.equal((await service.getStatus()).setupRequired, false);
+    const claims = jwt.decode(registered.socketToken);
+    assert.equal(claims.iss, "dm-interactive-table");
+    assert.equal(claims.aud, "dm-interactive-table-client");
 
     const persisted = await readFile(path.join(dataDir, "identity.json"), "utf8");
     assert.equal(persisted.includes("a-strong-test-password"), false);
@@ -62,6 +76,28 @@ test("initial DM setup uses a bcrypt hash and survives repository reload", async
       password: "a-strong-test-password",
     });
     assert.equal(login.principal.id, registered.principal.id);
+
+    const {
+      aud: _audience,
+      exp: _expiresAt,
+      iat: _issuedAt,
+      iss: _issuer,
+      jti: _jwtId,
+      sub,
+      ...forgedClaims
+    } = claims;
+    const wrongIssuerToken = jwt.sign(forgedClaims, process.env.AUTH_SECRET, {
+      algorithm: "HS256",
+      subject: sub,
+      issuer: "another-service",
+      audience: "dm-interactive-table-client",
+      expiresIn: 300,
+    });
+    assert.throws(
+      () => service.verifyToken(wrongIssuerToken),
+      (error) =>
+        error instanceof SecurityError && error.code === "SESSION_INVALID",
+    );
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }
@@ -93,6 +129,33 @@ test("table codes assign fixed roles and can be revoked", async () => {
     assert.equal(player.principal.role, "player");
     assert.equal(player.principal.campaignId, "demo-campaign");
     assert.equal(service.verifyToken(player.socketToken).role, "player");
+    await assert.rejects(
+      () =>
+        service.createTableAccess(player.principal, {
+          campaignId: "demo-campaign",
+          sessionId: "demo-session",
+          playerEnabled: true,
+          displayEnabled: true,
+        }),
+      (error) =>
+        error instanceof SecurityError &&
+        error.code === "CAMPAIGN_ACCESS_DENIED",
+    );
+    await assert.rejects(
+      () =>
+        service.createTableAccess(
+          { ...dmSession.principal, isAdmin: false },
+          {
+          campaignId: "another-campaign",
+          sessionId: "another-session",
+          playerEnabled: true,
+          displayEnabled: true,
+          },
+        ),
+      (error) =>
+        error instanceof SecurityError &&
+        error.code === "CAMPAIGN_ACCESS_DENIED",
+    );
     const rejoinedPlayer = await service.joinTable({
       code: grant.code,
       role: "player",
@@ -127,4 +190,37 @@ test("table codes assign fixed roles and can be revoked", async () => {
   } finally {
     await rm(dataDir, { recursive: true, force: true });
   }
+});
+
+test("browser mutation boundary rejects cross-site requests", () => {
+  assert.deepEqual(
+    evaluateBrowserMutation({
+      method: "POST",
+      origin: "https://attacker.example",
+      fetchSite: "cross-site",
+      requestOrigin: "http://localhost:5173",
+      allowedOrigins: ["http://localhost:5173"],
+    }),
+    { ok: false, reason: "cross-site" },
+  );
+
+  assert.equal(
+    evaluateBrowserMutation({
+      method: "PATCH",
+      origin: "http://localhost:5173",
+      fetchSite: "same-origin",
+      requestOrigin: "http://localhost:5173",
+      allowedOrigins: ["http://localhost:5173"],
+    }).ok,
+    true,
+  );
+
+  assert.equal(
+    evaluateBrowserMutation({
+      method: "DELETE",
+      requestOrigin: "http://localhost:4000",
+      allowedOrigins: ["http://localhost:5173"],
+    }).ok,
+    true,
+  );
 });

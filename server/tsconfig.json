@@ -1,17 +1,18 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
+    "target": "ES2022",
+    "module": "Node16",
     "rootDir": "..",
     "outDir": "./dist",
     "strict": true,
     "esModuleInterop": true,
-    "moduleResolution": "node",
+    "moduleResolution": "Node16",
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "../shared/**/*.ts"],
   "exclude": ["dist", "node_modules"],
   "ts-node": {
-    "files": true
+    "files": true,
+    "experimentalResolver": true
   }
 }

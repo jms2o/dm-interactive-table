@@ -10,8 +10,8 @@ import {
 import { assetService } from "../asset/asset.service";
 import { campaignService } from "../campaign/campaign.service";
 import { rulesetService } from "../ruleset/ruleset.service";
+import { APP_VERSION as DEMO_VERSION } from "../../../../shared/version";
 
-const DEMO_VERSION = "2.0.0-alpha.22";
 
 export class DemoService {
   getReadiness(): DemoReadinessResponse {
@@ -240,8 +240,8 @@ export class DemoService {
       commands: [
         "npm run dev",
         "npm run build",
-        "npm run lint --prefix client",
-        "npm run prisma:validate --prefix server",
+        "npm run lint --workspace client",
+        "npm run prisma:validate --workspace server",
         "npm run test:smoke",
         "npm run test:workflow",
         "npm run test:e2e",

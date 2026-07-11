@@ -5,6 +5,7 @@ import type {
   DiceRollResult,
   RollDiceRequest,
 } from '../../../../shared/types/dice'
+import type { SocketDiagnosticAck } from '../../../../shared/types/device-experience'
 import type {
   AdvanceTurnRequest,
   CreateEncounterRequest,
@@ -82,6 +83,8 @@ type RealtimeState = {
   createSnapshot: (name: string) => void
   restoreSnapshot: (snapshotId: string) => void
   deleteSnapshot: (snapshotId: string) => void
+  socketLatencyMs: number | null
+  socketRecovered: boolean
 }
 
 const EMPTY_HISTORY: GameHistoryState = {
@@ -115,8 +118,11 @@ export function useRealtimeGame(
   const [history, setHistory] = useState<GameHistoryState>(EMPTY_HISTORY)
   const [lastEvent, setLastEvent] = useState('')
   const [reconnectAttempt, setReconnectAttempt] = useState(0)
+  const [socketLatencyMs, setSocketLatencyMs] = useState<number | null>(null)
+  const [socketRecovered, setSocketRecovered] = useState(false)
 
   useEffect(() => {
+    let diagnosticTimer = 0
     const socket = io(SOCKET_URL, {
       auth: {
         token: accessToken,
@@ -137,16 +143,41 @@ export function useRealtimeGame(
 
     socketRef.current = socket
 
+    function measureSocketLatency() {
+      const startedAt = performance.now()
+      const requestId = crypto.randomUUID()
+      socket.timeout(4000).emit(
+        'diagnostics:ping',
+        { version: 1, requestId, clientTime: Date.now() },
+        (error: Error | null, ack?: SocketDiagnosticAck) => {
+          if (error || !ack?.ok || ack.requestId !== requestId) {
+            setSocketLatencyMs(null)
+            return
+          }
+          setSocketLatencyMs(
+            Math.max(0, Math.round(performance.now() - startedAt)),
+          )
+          setSocketRecovered(ack.recovered)
+        },
+      )
+    }
+
     socket.on('connect', () => {
       setConnected(true)
       setReconnectAttempt(0)
       setLastError('')
       setLastEvent(`Conectado como ${role}`)
+      setSocketRecovered(socket.recovered)
       socket.emit('game:state:request', {})
+      window.clearInterval(diagnosticTimer)
+      measureSocketLatency()
+      diagnosticTimer = window.setInterval(measureSocketLatency, 10_000)
     })
 
     socket.on('disconnect', () => {
       setConnected(false)
+      setSocketLatencyMs(null)
+      window.clearInterval(diagnosticTimer)
       setLastEvent('Conexión cerrada')
     })
 
@@ -253,6 +284,7 @@ export function useRealtimeGame(
     })
 
     return () => {
+      window.clearInterval(diagnosticTimer)
       socket.removeAllListeners()
       socket.io.removeAllListeners()
       socket.close()
@@ -533,6 +565,8 @@ export function useRealtimeGame(
     rollDice,
     saveAudioPreset,
     sendNarrative,
+    socketLatencyMs,
+    socketRecovered,
     startEncounter,
     state,
     updateAudioMixer,

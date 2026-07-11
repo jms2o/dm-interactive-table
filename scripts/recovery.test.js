@@ -12,7 +12,6 @@ process.env.TS_NODE_PROJECT = path.join(rootDir, "server", "tsconfig.json");
 
 require(path.join(
   rootDir,
-  "server",
   "node_modules",
   "ts-node",
   "register",

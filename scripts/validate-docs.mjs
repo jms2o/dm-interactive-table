@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { parse } from 'yaml'
 
 const root = resolve(import.meta.dirname, '..')
+const rootPackage = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'))
 const openApi = parse(
   await readFile(resolve(root, 'docs', 'api', 'openapi.yaml'), 'utf8'),
 )
@@ -12,7 +13,7 @@ const compose = parse(
 )
 
 assert.equal(openApi.openapi, '3.1.0')
-assert.equal(openApi.info.version, '2.0.0-alpha.22')
+assert.equal(openApi.info.version, rootPackage.version)
 assert.ok(openApi.paths['/auth/login'])
 assert.ok(openApi.paths['/table-access/join'])
 assert.ok(openApi.components.securitySchemes.bearerAuth)

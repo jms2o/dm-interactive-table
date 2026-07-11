@@ -60,6 +60,8 @@ import {
   DEMO_HERO_TOKEN_ASSET_ID,
   DEMO_MAP_ASSET_ID,
 } from "../modules/asset/asset.service";
+import { logEvent } from "../observability/logger";
+import { runtimeMetrics } from "../observability/metrics";
 
 export const DEFAULT_CAMPAIGN_ID = "demo-campaign";
 export const DEFAULT_SESSION_ID = "demo-session";
@@ -364,6 +366,8 @@ export class GameStateStore {
       snapshot: this.toSnapshot(),
     };
     await this.repository.saveNamedSnapshot(record);
+    runtimeMetrics.recordPersistence(true);
+    runtimeMetrics.recordSnapshot("created");
     this.namedSnapshots = [snapshotMetadata(record), ...this.namedSnapshots];
     return this.getHistoryState();
   }
@@ -381,6 +385,7 @@ export class GameStateStore {
     this.pushGameUndo(this.toSnapshot());
     this.gameRedoStack = [];
     this.restoreRuntimeSnapshot(record.snapshot);
+    runtimeMetrics.recordSnapshot("restored");
     return this.getHistoryState();
   }
 
@@ -1713,9 +1718,15 @@ export class GameStateStore {
 
   private persistSafely(operation: () => Promise<void>) {
     this.persistenceQueue = this.persistenceQueue
-      .then(operation)
+      .then(async () => {
+        await operation();
+        runtimeMetrics.recordPersistence(true);
+      })
       .catch((error) => {
-        console.error("Game state persistence write failed", error);
+        runtimeMetrics.recordPersistence(false);
+        logEvent("error", "persistence.write.failed", {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       });
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import type { AuthPrincipal } from '../../../../shared/types/auth'
@@ -51,10 +51,7 @@ import type {
   NarrativeUpdateCommand,
   TokenMoveCommand,
 } from '../../../../shared/types/realtime'
-import {
-  GameBoard,
-  type VisionEditMode,
-} from './components/GameBoard'
+import type { VisionEditMode } from './components/GameBoard'
 import {
   DEFAULT_MAP_LAYERS,
   moveMapLayer,
@@ -67,6 +64,9 @@ import { authHeaders } from '../auth/session-storage'
 import { CharacterSheetPanel } from '../session/CharacterSheetPanel'
 import { HistoryControls } from '../session/HistoryControls'
 import { SessionLifecycleControl } from '../session/SessionLifecycleControl'
+import { TableDeviceControl } from '../device/TableDeviceControl'
+import { useTableDeviceExperience } from '../device/useTableDeviceExperience'
+import { BackupRestoreControl } from '../backup/BackupRestoreControl'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 const API_ORIGIN = API_URL.replace(/\/api\/?$/, '')
@@ -86,6 +86,11 @@ const AI_PURPOSE_OPTIONS: Array<{
 
 const AUDIO_CHANNEL_IDS: AudioChannelId[] = ['music', 'sound', 'effect']
 const DEFAULT_AUDIO_TRANSITION_MS = 1200
+const GameBoard = lazy(() =>
+  import('./components/GameBoard').then((module) => ({
+    default: module.GameBoard,
+  })),
+)
 
 type GameWorkspaceProps = {
   role: ClientRole
@@ -124,6 +129,8 @@ export function GameWorkspace({
     startEncounter,
     state,
     saveAudioPreset,
+    socketLatencyMs,
+    socketRecovered,
     updateAudioMixer,
     updateFog,
     updateLighting,
@@ -138,6 +145,7 @@ export function GameWorkspace({
     principal.sessionId,
     onLogout,
   )
+  const device = useTableDeviceExperience(role, accessToken, connected)
   const [draftNarrative, setDraftNarrative] = useState('')
   const [diceFormula, setDiceFormula] = useState('d20')
   const [rollVisibility, setRollVisibility] =
@@ -1400,7 +1408,14 @@ export function GameWorkspace({
     <main
       className={`app-shell app-shell--${role} app-shell--${
         experience?.displayMode ?? 'standard'
+      } device-profile--${device.preferences.profile}${
+        device.kioskActive ? ' app-shell--kiosk' : ''
+      }${
+        device.kioskActive && device.preferences.hideCursor
+          ? ' device-hide-cursor'
+          : ''
       }`}
+      style={device.shellStyle}
     >
       <header className="topbar">
         <div>
@@ -1426,6 +1441,16 @@ export function GameWorkspace({
               sessionId={state?.sessionId ?? principal.sessionId}
             />
           ) : null}
+          {isDm ? (
+            <BackupRestoreControl
+              campaignId={state?.campaignId ?? principal.campaignId}
+            />
+          ) : null}
+          <TableDeviceControl
+            device={device}
+            socketLatencyMs={socketLatencyMs}
+            socketRecovered={socketRecovered}
+          />
           <button
             type="button"
             className="icon-button"
@@ -2736,22 +2761,25 @@ export function GameWorkspace({
 
         <section className="stage-panel" aria-label="Escena activa">
           {scene ? (
-            <GameBoard
-              canMoveTokens={isDm}
-              canEditVision={isDm}
-              role={role}
-              scene={scene}
-              mapLayers={mapLayers}
-              visionEditMode={visionEditMode}
-              selectedOccluderId={selectedOccluderId}
-              selectedOccluderIds={selectedOccluderIds}
-              pendingVisionPoint={pendingVisionPoint}
-              onTokenMove={handleTokenMove}
-              onVisionCanvasPoint={handleVisionCanvasPoint}
-              onSelectOccluder={handleSelectOccluder}
-              onOccluderChange={handleBoardOccluderChange}
-              onDeleteOccluder={removeOccluderById}
-            />
+            <Suspense fallback={<div className="empty-stage">Cargando mapa...</div>}>
+              <GameBoard
+                canMoveTokens={isDm}
+                canEditVision={isDm}
+                role={role}
+                scene={scene}
+                devicePreferences={device.preferences}
+                mapLayers={mapLayers}
+                visionEditMode={visionEditMode}
+                selectedOccluderId={selectedOccluderId}
+                selectedOccluderIds={selectedOccluderIds}
+                pendingVisionPoint={pendingVisionPoint}
+                onTokenMove={handleTokenMove}
+                onVisionCanvasPoint={handleVisionCanvasPoint}
+                onSelectOccluder={handleSelectOccluder}
+                onOccluderChange={handleBoardOccluderChange}
+                onDeleteOccluder={removeOccluderById}
+              />
+            </Suspense>
           ) : (
             <div className="empty-stage">Conectando con la escena...</div>
           )}

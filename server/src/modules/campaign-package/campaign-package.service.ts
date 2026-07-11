@@ -20,9 +20,12 @@ import type {
   AudioMixerState,
   AudioTransitionState,
 } from "../../../../shared/types/table-experience";
+import {
+  APP_VERSION,
+  CAMPAIGN_PACKAGE_SCHEMA_VERSION,
+} from "../../../../shared/version";
 
 const PACKAGE_KIND = "dm-interactive-table.campaign-package";
-const APP_VERSION = "2.0.0-alpha.22";
 
 export class CampaignPackageService {
   exportCampaign(campaignId = DEFAULT_CAMPAIGN_ID, exportedBy = "dm") {
@@ -51,7 +54,7 @@ export class CampaignPackageService {
 
     const campaignPackage: CampaignPackage = {
       kind: PACKAGE_KIND,
-      schemaVersion: 1,
+      schemaVersion: CAMPAIGN_PACKAGE_SCHEMA_VERSION,
       packageId: crypto.randomUUID(),
       appVersion: APP_VERSION,
       exportedAt: new Date().toISOString(),
@@ -219,7 +222,7 @@ function validatePackage(value: CampaignPackage): CampaignPackageImportIssue[] {
     });
   }
 
-  if (value.schemaVersion !== 1) {
+  if (value.schemaVersion !== CAMPAIGN_PACKAGE_SCHEMA_VERSION) {
     issues.push({
       severity: "error",
       code: "unsupported-schema",

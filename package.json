@@ -1,24 +1,34 @@
 {
   "name": "dm-interactive-table",
-  "version": "2.0.0-alpha.22",
+  "version": "2.0.0-alpha.23",
   "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
   "description": "Interactive digital table for D&D campaigns with DM control panel, real-time map sync, and AI-assisted storytelling.",
   "scripts": {
-    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
-    "dev:client": "npm run dev --prefix client",
-    "dev:server": "npm run dev --prefix server",
-    "build": "npm run build --prefix client && npm run build --prefix server",
-    "test:smoke": "npm run prisma:generate --prefix server && node scripts/smoke-test.js",
+    "dev": "concurrently \"npm run dev --workspace server\" \"npm run dev --workspace client\"",
+    "dev:client": "npm run dev --workspace client",
+    "dev:server": "npm run dev --workspace server",
+    "build": "npm run build --workspace client && npm run build --workspace server",
+    "test:smoke": "npm run prisma:generate --workspace server && node scripts/smoke-test.js",
     "test:vision": "node scripts/vision-geometry-test.mjs",
     "test:camera": "node scripts/camera-geometry-test.mjs",
     "test:layers": "node scripts/map-layers-test.mjs",
     "test:security": "node --test scripts/security.test.js",
     "test:recovery": "node --test scripts/recovery.test.js",
     "test:workflow": "node --test scripts/session-workflow.test.js",
+    "test:assets": "node --test scripts/asset-policy.test.js",
+    "test:device": "node scripts/table-device-test.mjs",
+    "test:performance": "node scripts/table-performance-test.mjs",
     "test:e2e": "npm run build && playwright test",
+    "test:e2e:run": "playwright test",
     "docs:validate": "node scripts/validate-docs.mjs",
-    "verify": "npm run build && npm run lint --prefix client && npm run docs:validate && npm run test:vision && npm run test:camera && npm run test:layers && npm run test:security && npm run test:recovery && npm run test:workflow && npm run prisma:validate --prefix server && npm run test:smoke",
-    "install:all": "npm install && npm install --prefix client && npm install --prefix server",
+    "release:check": "node scripts/release-check.mjs",
+    "verify:core": "npm run build && npm run lint --workspace client && npm run docs:validate && npm run release:check && npm run test:vision && npm run test:camera && npm run test:layers && npm run test:device && npm run test:performance && npm run test:assets && npm run test:security && npm run test:recovery && npm run test:workflow && npm run prisma:validate --workspace server && npm run test:smoke",
+    "verify": "npm run verify:core && npm run test:e2e:run",
+    "install:all": "npm install",
     "setup": "node scripts/setup.mjs"
   },
   "keywords": [
@@ -33,8 +43,14 @@
   "author": "Joel Martinez",
   "license": "MIT",
   "devDependencies": {
+    "@hono/node-server": "1.19.13",
     "@playwright/test": "^1.53.2",
     "concurrently": "^9.0.0",
+    "mathjs": "15.2.0",
     "yaml": "^2.9.0"
+  },
+  "overrides": {
+    "@hono/node-server": "$@hono/node-server",
+    "mathjs": "$mathjs"
   }
 }

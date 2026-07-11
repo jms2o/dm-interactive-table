@@ -4,9 +4,9 @@ Motor de campañas de rol con panel privado para el DM, mapa sincronizado para m
 
 ## Versión actual
 
-`2.0.0-alpha.22 - Session Workflow`
+`2.0.0-alpha.23 - Table Device Experience`
 
-Esta entrega añade selector de campañas, lobby con presencia, preparación y partida separadas, inicio/cierre formal de sesiones, hoja persistente de jugador e historial global con undo/redo y snapshots nombrados. Conserva la autenticación, recuperación y operación LAN de Session Reliability.
+Esta entrega añade perfiles TV/tableta/teléfono, calibración física, Wake Lock, safe areas, fullscreen/kiosk, diagnóstico de latencia y FPS, límites de assets, backups visibles y un gate de release completo. También endurece JWT, CSRF, observabilidad y revocación al cerrar sesión.
 
 ## Inicio con Docker
 
@@ -34,6 +34,8 @@ Requiere Node.js 22.
 npm run setup
 npm run dev
 ```
+
+Cliente y servidor son npm workspaces y comparten un único `package-lock.json`.
 
 - DM: `http://localhost:5173/dm`
 - Display: `http://localhost:5173/display`

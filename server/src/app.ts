@@ -1,10 +1,14 @@
 import { existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { APP_VERSION } from "../../shared/version";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import { env } from "./config/env";
+import { logEvent } from "./observability/logger";
+import { runtimeMetrics } from "./observability/metrics";
 import { aiRouter } from "./routes/ai.routes";
 import { authRouter } from "./routes/auth.routes";
 import { assetRouter } from "./routes/asset.routes";
@@ -29,6 +33,7 @@ import {
   authorizeApiRequest,
   requireAuth,
 } from "./security/http-auth";
+import { requireTrustedBrowserMutation } from "./security/csrf";
 
 export function createApp() {
   const app = express();
@@ -36,6 +41,29 @@ export function createApp() {
   if (env.trustProxy) {
     app.set("trust proxy", 1);
   }
+
+  app.use((request, response, next) => {
+    const suppliedRequestId = request.get("x-request-id");
+    request.requestId =
+      suppliedRequestId && /^[a-zA-Z0-9._:-]{1,100}$/.test(suppliedRequestId)
+        ? suppliedRequestId
+        : randomUUID();
+    response.setHeader("x-request-id", request.requestId);
+    const startedAt = performance.now();
+
+    response.once("finish", () => {
+      const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
+      runtimeMetrics.recordHttp(response.statusCode, durationMs);
+      logEvent(response.statusCode >= 500 ? "error" : "info", "http.request", {
+        requestId: request.requestId,
+        method: request.method,
+        path: request.path,
+        statusCode: response.statusCode,
+        durationMs,
+      });
+    });
+    next();
+  });
 
   app.use(
     helmet({
@@ -49,6 +77,7 @@ export function createApp() {
       credentials: true,
     }),
   );
+  app.use(requireTrustedBrowserMutation);
   app.use(express.json({ limit: env.jsonLimit }));
   app.use(cookieParser());
   app.use("/assets", express.static(resolveAssetRoot()));
@@ -56,7 +85,7 @@ export function createApp() {
   const apiMetadata = (_request: Request, response: Response) => {
     response.status(200).json({
       name: "DM Interactive Table API",
-      version: "2.0.0-alpha.22",
+      version: APP_VERSION,
       docs: "/api/health",
     });
   };
@@ -113,7 +142,10 @@ export function createApp() {
         return;
       }
 
-      console.error("Unhandled HTTP error", error);
+      logEvent("error", "http.unhandled", {
+        requestId: _request.requestId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
       response.status(500).json({
         error: {
           code: "INTERNAL_ERROR",

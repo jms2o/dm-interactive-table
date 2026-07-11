@@ -16,22 +16,20 @@ let dmAccessToken = "";
 
 require(path.join(
   rootDir,
-  "server",
   "node_modules",
   "ts-node",
   "register",
   "transpile-only",
 ));
+const { APP_VERSION } = require(path.join(rootDir, "shared", "version"));
 
 const { Server } = require(path.join(
   rootDir,
-  "server",
   "node_modules",
   "socket.io",
 ));
 const { io: createSocketClient } = require(path.join(
   rootDir,
-  "client",
   "node_modules",
   "socket.io-client",
 ));
@@ -108,7 +106,7 @@ async function main() {
 async function verifyHttpFlow(apiBase, socketUrl) {
   const apiOrigin = apiBase.replace(/\/api$/, "");
   const root = await getJson(`http://127.0.0.1:${new URL(apiBase).port}/`);
-  assert.equal(root.version, "2.0.0-alpha.22");
+  assert.equal(root.version, APP_VERSION);
 
   const status = await getJson(`${apiBase}/auth/status`);
   assert.equal(status.setupRequired, true);
@@ -137,7 +135,7 @@ async function verifyHttpFlow(apiBase, socketUrl) {
 
   const readiness = await getJson(`${apiBase}/demo/readiness`);
   assert.equal(readiness.allReady, true);
-  assert.equal(readiness.version, "2.0.0-alpha.22");
+  assert.equal(readiness.version, APP_VERSION);
 
   const rulesets = await getJson(`${apiBase}/rulesets`);
   assert.equal(rulesets[0].id, "dnd5e");
@@ -311,7 +309,7 @@ async function verifyHttpFlow(apiBase, socketUrl) {
   );
   assert.equal(exportedPackage.kind, "dm-interactive-table.campaign-package");
   assert.equal(exportedPackage.schemaVersion, 1);
-  assert.equal(exportedPackage.appVersion, "2.0.0-alpha.22");
+  assert.equal(exportedPackage.appVersion, APP_VERSION);
   assert.equal(exportedPackage.manifest.campaignId, "demo-campaign");
   assert.equal(exportedPackage.manifest.assetMode, "metadata-only");
   assert.ok(exportedPackage.manifest.counts.tokens > 0);

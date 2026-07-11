@@ -404,6 +404,18 @@ type RealtimeError = {
 };
 ```
 
+## Diagnóstico de dispositivo 2.0.0-alpha.23
+
+`diagnostics:ping` está disponible para todo socket autenticado. El cliente
+envía `{ version: 1, requestId, clientTime }` y el ack devuelve
+`{ ok, requestId, serverTime, recovered }`. El tiempo de ida y vuelta se calcula
+con `performance.now()` en el dispositivo y no modifica el estado de campaña.
+
+El servidor cuenta conexiones activas, conexiones recuperadas y total de
+conexiones. HTTP expone una muestra complementaria en
+`GET /api/network/diagnostics`; ninguna de las dos rutas incluye claims, tokens,
+códigos o contenido de campaña.
+
 ## Criterios de aceptación
 
 - Si el DM mueve un token, el display lo ve sin recargar.

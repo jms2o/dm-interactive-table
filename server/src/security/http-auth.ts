@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { campaignService } from "../modules/campaign/campaign.service";
 import { authService } from ".";
 import { SecurityError } from "./auth.service";
 
@@ -26,7 +27,15 @@ export function requireAuth(
       request.auth = principal;
       next();
     })
-    .catch((error) => handleSecurityError(error, response, next));
+    .catch((error) => {
+      const endedPrincipal = principalForEndedWorkflow(request, token, error);
+      if (endedPrincipal) {
+        request.auth = endedPrincipal;
+        next();
+        return;
+      }
+      handleSecurityError(error, response, next);
+    });
 }
 
 export function authorizeApiRequest(
@@ -70,7 +79,12 @@ export function authorizeApiRequest(
   const path = request.originalUrl.split("?")[0];
   const readOnlyMethod = request.method === "GET" || request.method === "HEAD";
 
-  if (readOnlyMethod && (campaignId || path.startsWith("/api/rulesets"))) {
+  if (
+    readOnlyMethod &&
+    (campaignId ||
+      path.startsWith("/api/rulesets") ||
+      path.startsWith("/api/network"))
+  ) {
     next();
     return;
   }
@@ -145,4 +159,39 @@ function sendSecurityError(response: Response, error: SecurityError) {
 function campaignIdFromRequest(request: Request) {
   const match = request.originalUrl.match(/^\/api\/campaigns\/([^/?]+)/);
   return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+function principalForEndedWorkflow(
+  request: Request,
+  token: string,
+  error: unknown,
+) {
+  if (
+    !(error instanceof SecurityError) ||
+    error.code !== "SESSION_REVOKED" ||
+    request.method !== "GET"
+  ) {
+    return null;
+  }
+
+  const match = request.originalUrl.match(
+    /^\/api\/campaigns\/([^/?]+)\/workflow(?:\?.*)?$/,
+  );
+  if (!match) return null;
+
+  try {
+    const principal = authService.verifyToken(token);
+    const campaignId = decodeURIComponent(match[1]);
+    if (
+      principal.role === "dm" ||
+      principal.campaignId !== campaignId ||
+      !principal.sessionId
+    ) {
+      return null;
+    }
+    const session = campaignService.getSession(campaignId, principal.sessionId);
+    return session?.phase === "ended" ? principal : null;
+  } catch {
+    return null;
+  }
 }

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DM Interactive Table API
-  version: 2.0.0-alpha.22
+  version: 2.0.0-alpha.23
   description: API HTTP para sesiones, campañas, escenas, mapas, combate, dados e IA.
 servers:
   - url: http://localhost:4000/api
@@ -169,7 +169,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [origins]
+                required: [origins, requestId, serverTime]
                 properties:
                   origins:
                     type: array
@@ -185,6 +185,22 @@ paths:
                         source:
                           type: string
                           enum: [current, configured, network]
+                  requestId:
+                    type: string
+                  serverTime:
+                    type: string
+                    format: date-time
+  /network/diagnostics:
+    get:
+      summary: Medir el estado operativo del servidor para este dispositivo
+      operationId: getNetworkDiagnostics
+      responses:
+        "200":
+          description: Reloj, version, persistencia y metricas acumuladas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkDiagnosticResponse"
   /table-access:
     get:
       summary: Consultar el acceso temporal de una campaña
@@ -1296,7 +1312,7 @@ components:
           type: string
         appVersion:
           type: string
-          example: 2.0.0-alpha.22
+          example: 2.0.0-alpha.23
         exportedAt:
           type: string
           format: date-time
@@ -1563,7 +1579,7 @@ components:
       enum: [available, missing, archived]
     AssetLibraryResponse:
       type: object
-      required: [version, campaignId, assets, counts, updatedAt]
+      required: [version, campaignId, assets, counts, policy, updatedAt]
       properties:
         version:
           type: integer
@@ -1576,6 +1592,8 @@ components:
             $ref: "#/components/schemas/AssetLibraryItem"
         counts:
           $ref: "#/components/schemas/AssetLibraryCounts"
+        policy:
+          $ref: "#/components/schemas/AssetPolicyLimits"
         updatedAt:
           type: string
           format: date-time
@@ -1595,6 +1613,69 @@ components:
           type: integer
         effect:
           type: integer
+    AssetPolicyLimits:
+      type: object
+      required:
+        - maxAssetsPerCampaign
+        - maxNameCharacters
+        - maxUrlCharacters
+        - maxMetadataBytes
+        - maxMapDimensionPixels
+        - maxAudioDurationSeconds
+        - maxDeclaredBytes
+      properties:
+        maxAssetsPerCampaign:
+          type: integer
+          example: 500
+        maxNameCharacters:
+          type: integer
+          example: 120
+        maxUrlCharacters:
+          type: integer
+          example: 2048
+        maxMetadataBytes:
+          type: integer
+          example: 16384
+        maxMapDimensionPixels:
+          type: integer
+          example: 8192
+        maxAudioDurationSeconds:
+          type: integer
+          example: 14400
+        maxDeclaredBytes:
+          type: object
+          additionalProperties:
+            type: integer
+    NetworkDiagnosticResponse:
+      type: object
+      required:
+        - version
+        - requestId
+        - appVersion
+        - serverTime
+        - uptimeSeconds
+        - persistence
+        - metrics
+      properties:
+        version:
+          type: integer
+          const: 1
+        requestId:
+          type: string
+        appVersion:
+          type: string
+        serverTime:
+          type: string
+          format: date-time
+        uptimeSeconds:
+          type: integer
+        persistence:
+          type: string
+          enum: [memory, local, prisma]
+        metrics:
+          type: object
+          additionalProperties:
+            type: number
     AssetLibraryItem:
       type: object
       required:

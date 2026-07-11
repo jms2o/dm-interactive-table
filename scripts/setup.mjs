@@ -17,6 +17,8 @@ if (!existsSync(serverEnvPath)) {
       'PORT=4000',
       'CLIENT_ORIGIN=http://localhost:5173',
       `AUTH_SECRET=${secret}`,
+      'JWT_ISSUER=dm-interactive-table',
+      'JWT_AUDIENCE=dm-interactive-table-client',
       'SESSION_TTL_HOURS=12',
       'TABLE_CODE_TTL_MINUTES=720',
       'COOKIE_SECURE=false',
@@ -32,9 +34,7 @@ if (!existsSync(serverEnvPath)) {
 }
 
 runNpm(['install'])
-runNpm(['install'], resolve(root, 'client'))
-runNpm(['install'], resolve(root, 'server'))
-runNpm(['run', 'prisma:generate'], resolve(root, 'server'))
+runNpm(['run', 'prisma:generate', '--workspace', 'server'])
 
 console.log('\nSetup complete.')
 console.log('Run: npm run dev')

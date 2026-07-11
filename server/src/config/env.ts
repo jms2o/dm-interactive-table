@@ -13,6 +13,13 @@ const envSchema = z.object({
   CLIENT_ORIGIN: z.string().default("http://localhost:5173"),
   DATABASE_URL: z.string().optional(),
   AUTH_SECRET: z.string().min(32).default(developmentAuthSecret),
+  JWT_ISSUER: z.string().trim().min(3).max(120).default("dm-interactive-table"),
+  JWT_AUDIENCE: z
+    .string()
+    .trim()
+    .min(3)
+    .max(120)
+    .default("dm-interactive-table-client"),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(12),
   TABLE_CODE_TTL_MINUTES: z.coerce
     .number()
@@ -39,10 +46,21 @@ if (
   throw new Error("AUTH_SECRET must be set to a unique value in production");
 }
 
+if (parsed.NODE_ENV === "production" && parsed.CLIENT_ORIGIN === "*") {
+  throw new Error("CLIENT_ORIGIN cannot be wildcard in production");
+}
+
+const clientOrigins =
+  parsed.CLIENT_ORIGIN === "*"
+    ? []
+    : parsed.CLIENT_ORIGIN.split(",")
+        .map((origin) => origin.trim().replace(/\/$/, ""))
+        .filter(Boolean);
+
 const corsOrigin: CorsOptions["origin"] =
   parsed.CLIENT_ORIGIN === "*"
     ? true
-    : parsed.CLIENT_ORIGIN.split(",").map((origin) => origin.trim());
+    : clientOrigins;
 
 export const env = {
   nodeEnv: parsed.NODE_ENV,
@@ -51,6 +69,8 @@ export const env = {
   corsOrigin,
   databaseUrl: parsed.DATABASE_URL,
   authSecret: parsed.AUTH_SECRET,
+  jwtIssuer: parsed.JWT_ISSUER,
+  jwtAudience: parsed.JWT_AUDIENCE,
   sessionTtlHours: parsed.SESSION_TTL_HOURS,
   tableCodeTtlMinutes: parsed.TABLE_CODE_TTL_MINUTES,
   cookieSecure:
@@ -61,4 +81,5 @@ export const env = {
   jsonLimit: parsed.JSON_LIMIT,
   trustProxy: parsed.TRUST_PROXY === "true",
   publicBaseUrl: parsed.PUBLIC_BASE_URL,
+  clientOrigins,
 };

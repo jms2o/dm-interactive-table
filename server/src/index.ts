@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { networkInterfaces } from "node:os";
 import { Server } from "socket.io";
+import { APP_VERSION } from "../../shared/version";
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { gameState } from "./game/game.state";
@@ -37,7 +38,7 @@ void campaignService.initialize().then(async () => {
   );
 
   httpServer.listen(env.port, "0.0.0.0", () => {
-    console.log(`DM Interactive Table 2.0.0-alpha.22`);
+    console.log(`DM Interactive Table ${APP_VERSION}`);
     console.log(`Local:   http://localhost:${env.port}`);
 
     for (const address of localNetworkAddresses()) {

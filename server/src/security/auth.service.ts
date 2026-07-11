@@ -131,6 +131,8 @@ export class AuthService {
     try {
       decoded = jwt.verify(token, env.authSecret, {
         algorithms: ["HS256"],
+        issuer: env.jwtIssuer,
+        audience: env.jwtAudience,
       });
     } catch {
       throw new SecurityError(
@@ -299,12 +301,18 @@ export class AuthService {
     };
   }
 
-  async revokeTableAccess(principal: AuthPrincipal, campaignId: string) {
+  async revokeTableAccess(
+    principal: AuthPrincipal,
+    campaignId: string,
+    options: { disconnect?: boolean } = {},
+  ) {
     assertDmCampaign(principal, campaignId);
     await this.repository.revokeTableAccess(campaignId, new Date());
 
-    for (const listener of this.tableRevocationListeners) {
-      listener(campaignId);
+    if (options.disconnect !== false) {
+      for (const listener of this.tableRevocationListeners) {
+        listener(campaignId);
+      }
     }
   }
 
@@ -400,6 +408,8 @@ export class AuthService {
         algorithm: "HS256",
         subject: principal.id,
         jwtid: randomUUID(),
+        issuer: env.jwtIssuer,
+        audience: env.jwtAudience,
         expiresIn: expiresInSeconds,
       },
     );

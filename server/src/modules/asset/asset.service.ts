@@ -8,6 +8,10 @@ import type {
 } from "../../../../shared/types/asset";
 import type { CampaignPackageAsset } from "../../../../shared/types/campaign-package";
 import { campaignService } from "../campaign/campaign.service";
+import {
+  ASSET_POLICY_LIMITS,
+  assertAssetPolicy,
+} from "./asset-policy";
 
 const DEMO_CAMPAIGN_ID = "demo-campaign";
 export const DEMO_MAP_ASSET_ID = "asset-demo-map-camp";
@@ -114,6 +118,8 @@ export class AssetService {
       throw new Error("Campaign not found");
     }
 
+    assertAssetPolicy(request, this.listAssets(campaignId).length);
+
     const now = new Date().toISOString();
     const asset: AssetLibraryItem = {
       id: crypto.randomUUID(),
@@ -192,6 +198,10 @@ function libraryResponse(
     campaignId,
     assets,
     counts: countByType(assets),
+    policy: {
+      ...ASSET_POLICY_LIMITS,
+      maxDeclaredBytes: { ...ASSET_POLICY_LIMITS.maxDeclaredBytes },
+    },
     updatedAt: new Date().toISOString(),
   };
 }

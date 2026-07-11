@@ -11,6 +11,7 @@ Este documento define la frontera de confianza implementada en `2.0.0-alpha.21`.
 - La primera instalación permite crear una sola cuenta administradora.
 - La contraseña se almacena con bcrypt, coste 12.
 - El login emite un JWT HS256 y una cookie `dit_dm_session` `httpOnly`, `SameSite=Lax`.
+- Firma y verificación exigen `JWT_ISSUER`, `JWT_AUDIENCE` y algoritmo HS256.
 - En producción, `AUTH_SECRET` es obligatorio y debe tener al menos 32 caracteres.
 
 ### Jugador y display
@@ -34,6 +35,11 @@ Las rutas `/api/health`, `/api/auth/status`, `/api/auth/login`, `/api/auth/regis
 
 Los endpoints de credenciales y código tienen rate limit. Express limita JSON a `JSON_LIMIT` y Helmet añade cabeceras defensivas.
 
+Desde `2.0.0-alpha.23`, toda mutación de navegador pasa por una frontera CSRF.
+`Sec-Fetch-Site: cross-site` se rechaza y, cuando existe `Origin`, debe coincidir
+con el host actual o con `CLIENT_ORIGIN`. Las solicitudes de CLI sin Fetch
+Metadata siguen permitidas y después atraviesan la autorización normal.
+
 ## Socket.IO
 
 El middleware del handshake valida `auth.token`; `role` y `campaignId` enviados por el cliente solo pueden coincidir con los claims firmados. Cada comando vuelve a comprobar rol y campaña antes de llegar al motor de dominio.
@@ -50,6 +56,15 @@ debe finalizar antes de activar otra mesa.
 Jugador y display no reciben `scene` durante `preparation` o `ended`, aunque
 conserven un token válido. Los eventos `history:*` requieren DM y coincidencia de
 campaña y sesión.
+
+Finalizar una sesión marca revocadas las concesiones de mesa. Los clientes ya
+conectados reciben primero el estado `ended` para mostrar el cierre; cualquier
+reconexión o comando posterior queda rechazado.
+
+Un token de mesa revocado conserva una sola excepción de lectura:
+`GET /campaigns/{campaignId}/workflow` cuando su propia sesión ya está
+`ended`. La respuesta para jugador/display elimina `summaryPrivate`; esta
+excepción permite presentar el cierre y no autoriza ninguna otra ruta.
 
 ## Datos privados
 

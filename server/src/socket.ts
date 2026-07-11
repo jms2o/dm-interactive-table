@@ -1,6 +1,7 @@
 import type { Server, Socket } from "socket.io";
 import { z } from "zod";
 import type { AuthPrincipal } from "../../shared/types/auth";
+import type { SocketDiagnosticAck } from "../../shared/types/device-experience";
 import type {
   HistoryActionAck,
   HistoryCommand,
@@ -33,6 +34,7 @@ import { diceService } from "./modules/dice/dice.service";
 import { campaignService } from "./modules/campaign/campaign.service";
 import { sessionWorkflowService } from "./modules/session/session-workflow.service";
 import { authService } from "./security";
+import { runtimeMetrics } from "./observability/metrics";
 
 type Ack<T> = (payload: T) => void;
 
@@ -57,6 +59,12 @@ const clientJoinSchema = z.object({
   sessionId: z.string().min(1).default(DEFAULT_SESSION_ID),
   sceneId: z.string().min(1).default(DEFAULT_SCENE_ID),
   role: clientRoleSchema.default("display"),
+});
+
+const diagnosticPingSchema = z.object({
+  version: z.literal(1),
+  requestId: z.string().min(1).max(120),
+  clientTime: z.number().finite(),
 });
 
 const tokenMoveSchema = z.object({
@@ -383,6 +391,7 @@ export function configureSocket(io: Server) {
   });
 
   io.on("connection", (socket) => {
+    runtimeMetrics.connectSocket(socket.recovered);
     installSocketGuards(socket, commandResults);
     const context = contextFromSocket(socket);
     joinContextRooms(socket, context);
@@ -444,7 +453,32 @@ export function configureSocket(io: Server) {
       ack?.(snapshot);
     });
 
+    socket.on(
+      "diagnostics:ping",
+      (rawPayload, ack?: Ack<SocketDiagnosticAck>) => {
+        const parsed = diagnosticPingSchema.safeParse(rawPayload);
+        if (!parsed.success) {
+          ack?.({
+            ok: false,
+            requestId: requestIdFromPayload(rawPayload),
+            serverTime: Date.now(),
+            recovered: socket.recovered,
+            error: "Invalid diagnostics payload",
+          });
+          return;
+        }
+
+        ack?.({
+          ok: true,
+          requestId: parsed.data.requestId,
+          serverTime: Date.now(),
+          recovered: socket.recovered,
+        });
+      },
+    );
+
     socket.on("disconnect", () => {
+      runtimeMetrics.disconnectSocket();
       const activeContext = activeContextFromSocket(socket);
       sessionWorkflowService.presence.disconnect(
         activeContext.sessionId,
@@ -1518,6 +1552,18 @@ function installSocketGuards(
   socket.use((packet, next) => {
     const [eventName, payload] = packet;
     const now = Date.now();
+    const principal = principalFromSocket(socket);
+
+    if (principal.role !== "dm" && principal.sessionId) {
+      const session = campaignService.getSession(
+        principal.campaignId,
+        principal.sessionId,
+      );
+      if (!session || session.phase === "ended") {
+        next(socketSecurityError("SESSION_ENDED", "The session has ended"));
+        return;
+      }
+    }
 
     if (now - windowStartedAt >= 10_000) {
       windowStartedAt = now;

@@ -33,8 +33,8 @@ Presentar DM Interactive Table como un motor de campañas de rol extensible, no 
 
 ```bash
 npm run build
-npm run lint --prefix client
-npm run prisma:validate --prefix server
+npm run lint --workspace client
+npm run prisma:validate --workspace server
 npm run test:smoke
 ```
 

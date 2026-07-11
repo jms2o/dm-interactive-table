@@ -47,4 +47,6 @@ export type NetworkOrigin = {
 
 export type NetworkInfoResponse = {
   origins: NetworkOrigin[];
+  requestId: string;
+  serverTime: string;
 };

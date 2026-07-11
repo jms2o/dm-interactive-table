@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
+import { Focus, Hand, Home, ZoomIn, ZoomOut } from 'lucide-react'
 import { Circle, Group, Layer, Line, Rect, Stage, Text } from 'react-konva'
 import type Konva from 'konva'
 import type { GameScene } from '../../../../../shared/types/game'
 import type { ClientRole } from '../../../../../shared/types/realtime'
+import type { TableDevicePreferences } from '../../../../../shared/types/device-experience'
 import type {
   LightSource,
   VisionOccluder,
@@ -20,6 +28,7 @@ import {
   type MapLayerId,
   type MapLayerSetting,
 } from '../map-layers'
+import { calibratedBoardWidth } from '../../device/table-device'
 
 type GameBoardProps = {
   canMoveTokens: boolean
@@ -36,6 +45,7 @@ type GameBoardProps = {
   onOccluderChange?: (occluder: VisionOccluder) => void
   onDeleteOccluder?: (occluderId: string) => void
   mapLayers?: MapLayerSetting[]
+  devicePreferences: TableDevicePreferences
 }
 
 export type VisionEditMode = 'select' | 'draw-wall' | 'draw-door'
@@ -63,6 +73,7 @@ export function GameBoard({
   onOccluderChange,
   onDeleteOccluder,
   mapLayers = DEFAULT_MAP_LAYERS,
+  devicePreferences,
 }: GameBoardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null)
@@ -96,6 +107,22 @@ export function GameBoard({
       Math.min(BOARD_WIDTH / scene.map.width, BOARD_HEIGHT / scene.map.height),
     [scene.map.height, scene.map.width],
   )
+  const renderedBoardWidth = useMemo(
+    () =>
+      calibratedBoardWidth({
+        boardWidth: BOARD_WIDTH,
+        mapGridSize: scene.map.gridSize,
+        mapScale: scale,
+        preferences: devicePreferences,
+      }),
+    [devicePreferences, scale, scene.map.gridSize],
+  )
+  const calibrated = devicePreferences.calibrationEnabled
+  const boardStyle = calibrated
+    ? ({
+        '--board-canvas-width': `${Math.round(renderedBoardWidth)}px`,
+      } as CSSProperties)
+    : undefined
   const minimapScale = Math.min(
     MINIMAP_WIDTH / scene.map.width,
     MINIMAP_HEIGHT / scene.map.height,
@@ -362,7 +389,12 @@ export function GameBoard({
   }
 
   return (
-    <div className="board-shell" ref={containerRef}>
+    <div
+      className={`board-shell${calibrated ? ' board-shell--calibrated' : ''}`}
+      ref={containerRef}
+      style={boardStyle}
+      data-calibrated={calibrated ? 'true' : 'false'}
+    >
       <div className="board-meta">
         <div>
           <span className="section-label">{scene.map.name}</span>
@@ -372,23 +404,44 @@ export function GameBoard({
           <button
             type="button"
             title="Desplazar mapa"
+            aria-label="Desplazar mapa"
             aria-pressed={panEnabled}
             onClick={() => setPanEnabled((enabled) => !enabled)}
           >
-            ✥
+            <Hand size={17} />
           </button>
-          <button type="button" title="Alejar" onClick={() => setZoomAtPoint(camera.zoom / CAMERA_ZOOM_STEP)}>
-            −
+          <button
+            type="button"
+            title="Alejar"
+            aria-label="Alejar"
+            onClick={() => setZoomAtPoint(camera.zoom / CAMERA_ZOOM_STEP)}
+          >
+            <ZoomOut size={17} />
           </button>
           <span>{Math.round(camera.zoom * 100)}%</span>
-          <button type="button" title="Acercar" onClick={() => setZoomAtPoint(camera.zoom * CAMERA_ZOOM_STEP)}>
-            +
+          <button
+            type="button"
+            title="Acercar"
+            aria-label="Acercar"
+            onClick={() => setZoomAtPoint(camera.zoom * CAMERA_ZOOM_STEP)}
+          >
+            <ZoomIn size={17} />
           </button>
-          <button type="button" title="Encuadrar selección" onClick={frameSelection}>
-            ⌖
+          <button
+            type="button"
+            title="Encuadrar selección"
+            aria-label="Encuadrar selección"
+            onClick={frameSelection}
+          >
+            <Focus size={17} />
           </button>
-          <button type="button" title="Restablecer cámara" onClick={resetCamera}>
-            ⌂
+          <button
+            type="button"
+            title="Restablecer cámara"
+            aria-label="Restablecer cámara"
+            onClick={resetCamera}
+          >
+            <Home size={17} />
           </button>
         </div>
       </div>

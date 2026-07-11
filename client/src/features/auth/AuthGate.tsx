@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import { Monitor, ShieldCheck, Swords, UserRound } from 'lucide-react'
 import { useLocation } from 'react-router-dom'
 import type {
@@ -6,7 +6,6 @@ import type {
   AuthStatusResponse,
 } from '../../../../shared/types/auth'
 import type { ClientRole } from '../../../../shared/types/realtime'
-import { GameWorkspace } from '../game/GameWorkspace'
 import { SessionBoundary } from '../session/SessionBoundary'
 import { SessionLobby } from '../session/SessionLobby'
 import {
@@ -17,6 +16,11 @@ import {
 } from './session-storage'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
+const GameWorkspace = lazy(() =>
+  import('../game/GameWorkspace').then((module) => ({
+    default: module.GameWorkspace,
+  })),
+)
 
 type AuthGateProps = {
   role: ClientRole
@@ -151,13 +155,21 @@ export function AuthGate({ role }: AuthGateProps) {
   }
 
   const workspace = (
-    <GameWorkspace
-      role={role}
-      accessToken={session.socketToken}
-      principal={session.principal}
-      onLogout={handleLogout}
-      onReturnToLobby={role === 'dm' ? () => setShowDmLobby(true) : undefined}
-    />
+    <Suspense
+      fallback={
+        <main className="auth-shell auth-shell--loading">
+          <span className="auth-loader" aria-label="Cargando mesa" />
+        </main>
+      }
+    >
+      <GameWorkspace
+        role={role}
+        accessToken={session.socketToken}
+        principal={session.principal}
+        onLogout={handleLogout}
+        onReturnToLobby={role === 'dm' ? () => setShowDmLobby(true) : undefined}
+      />
+    </Suspense>
   )
 
   if (role === 'dm') return workspace

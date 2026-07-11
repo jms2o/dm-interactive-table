@@ -251,3 +251,41 @@ Comando dedicado:
 ```bash
 npm run test:workflow
 ```
+
+## Table Device Experience 2.0.0-alpha.23
+
+### Seguridad y release
+
+- Root, cliente, servidor, locks, README, changelog, OpenAPI y runtime coinciden.
+- JWT con issuer, audience, firma o algoritmo alterado se rechaza.
+- Mutación con origen cross-site se rechaza antes de llegar al dominio.
+- Player no crea concesiones ni cruza campañas.
+- Código revocado no se reutiliza y cierre de sesión invalida reconexión.
+
+### Dispositivo físico
+
+- Perfil inicial: display=TV, DM=tableta, player=teléfono.
+- Una casilla de 1 in a 96 ppp proyecta el tablero demo a 1920 px de ancho.
+- Conversión 1 in = 2.54 cm conserva el tamaño físico.
+- Wake Lock se vuelve a solicitar al recuperar `visibilityState=visible`.
+- Kiosk solo oculta controles mientras fullscreen está activo.
+- Safe area no superpone topbar, canvas ni controles en TV y teléfono.
+
+### Rendimiento y operación
+
+- Escena 4K de referencia: 120 oclusores, 12 orígenes y 30 frames.
+- El p95 de geometría se mantiene por debajo de 250 ms en CI.
+- HTTP y Socket.IO producen muestras de latencia independientes.
+- Política rechaza URL insegura, mapa mayor a 8192 px y metadata mayor a 16 KiB.
+- Backup exporta `schemaVersion`/`appVersion`; restore aplica una copia con IDs nuevos.
+- Playwright conserva trace, screenshot y video al fallar.
+
+Comandos:
+
+```bash
+npm run release:check
+npm run test:device
+npm run test:performance
+npm run test:assets
+npm run verify
+```
