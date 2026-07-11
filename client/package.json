@@ -15,7 +15,7 @@
     "axios": "^1.18.1",
     "framer-motion": "^12.42.2",
     "konva": "^10.3.0",
-    "lucide-react": "^0.525.0",
+    "lucide-react": "^1.24.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
