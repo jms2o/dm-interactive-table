@@ -55,8 +55,25 @@ const { authService } = require(path.join(
   "src",
   "security",
 ));
+const { campaignService } = require(path.join(
+  rootDir,
+  "server",
+  "src",
+  "modules",
+  "campaign",
+  "campaign.service",
+));
+const { sessionWorkflowService } = require(path.join(
+  rootDir,
+  "server",
+  "src",
+  "modules",
+  "session",
+  "session-workflow.service",
+));
 
 async function main() {
+  await campaignService.initialize();
   await gameState.initialize();
 
   const app = createApp();
@@ -80,6 +97,8 @@ async function main() {
     console.log("Smoke test passed");
   } finally {
     await gameState.flushPersistence();
+    await campaignService.flushPersistence();
+    await sessionWorkflowService.flushPersistence();
     await closeSocketServer(socketServer);
     await closeServer(httpServer);
     await rm(testDataDir, { recursive: true, force: true });
@@ -89,7 +108,7 @@ async function main() {
 async function verifyHttpFlow(apiBase, socketUrl) {
   const apiOrigin = apiBase.replace(/\/api$/, "");
   const root = await getJson(`http://127.0.0.1:${new URL(apiBase).port}/`);
-  assert.equal(root.version, "2.0.0-alpha.21");
+  assert.equal(root.version, "2.0.0-alpha.22");
 
   const status = await getJson(`${apiBase}/auth/status`);
   assert.equal(status.setupRequired, true);
@@ -118,7 +137,7 @@ async function verifyHttpFlow(apiBase, socketUrl) {
 
   const readiness = await getJson(`${apiBase}/demo/readiness`);
   assert.equal(readiness.allReady, true);
-  assert.equal(readiness.version, "2.0.0-alpha.21");
+  assert.equal(readiness.version, "2.0.0-alpha.22");
 
   const rulesets = await getJson(`${apiBase}/rulesets`);
   assert.equal(rulesets[0].id, "dnd5e");
@@ -246,6 +265,38 @@ async function verifyHttpFlow(apiBase, socketUrl) {
     "",
   );
 
+  const characterSheet = await getJson(
+    `${apiBase}/campaigns/demo-campaign/workflow/character-sheet`,
+    playerSession.socketToken,
+  );
+  assert.equal(characterSheet.name, "Smoke Player");
+  const updatedSheet = await patchJson(
+    `${apiBase}/campaigns/demo-campaign/workflow/character-sheet`,
+    { currentHp: 7, temporaryHp: 2, resources: { inspiration: 1 } },
+    playerSession.socketToken,
+  );
+  assert.equal(updatedSheet.currentHp, 7);
+  assert.equal(updatedSheet.temporaryHp, 2);
+  assert.equal(updatedSheet.name, "Smoke Player");
+  const playerWorkflow = await getJson(
+    `${apiBase}/campaigns/demo-campaign/workflow`,
+    playerSession.socketToken,
+  );
+  assert.equal(playerWorkflow.sessions.length, 1);
+  assert.equal(playerWorkflow.sessions[0].id, "demo-session");
+  assert.equal(playerWorkflow.sessions[0].summaryPrivate, "");
+
+  const workflowBeforeStart = await getJson(
+    `${apiBase}/campaigns/demo-campaign/workflow`,
+  );
+  assert.equal(workflowBeforeStart.sessions[0].phase, "preparation");
+
+  const startedWorkflow = await postJson(
+    `${apiBase}/campaigns/demo-campaign/workflow/sessions/demo-session/start`,
+    {},
+  );
+  assert.equal(startedWorkflow.session.phase, "live");
+
   await verifySocketFlow(
     socketUrl,
     ambienceAsset.id,
@@ -260,7 +311,7 @@ async function verifyHttpFlow(apiBase, socketUrl) {
   );
   assert.equal(exportedPackage.kind, "dm-interactive-table.campaign-package");
   assert.equal(exportedPackage.schemaVersion, 1);
-  assert.equal(exportedPackage.appVersion, "2.0.0-alpha.21");
+  assert.equal(exportedPackage.appVersion, "2.0.0-alpha.22");
   assert.equal(exportedPackage.manifest.campaignId, "demo-campaign");
   assert.equal(exportedPackage.manifest.assetMode, "metadata-only");
   assert.ok(exportedPackage.manifest.counts.tokens > 0);
@@ -1079,6 +1130,43 @@ async function verifySocketFlow(
     ambienceAssetId,
   );
 
+  const snapshotAck = await emitWithAck(dm, "history:snapshot:create", {
+    version: 1,
+    campaignId: "demo-campaign",
+    sessionId: "demo-session",
+    name: "Smoke safe point",
+    requestId: "smoke-history-snapshot",
+  });
+  assert.equal(snapshotAck.ok, true);
+  assert.equal(snapshotAck.history.snapshots.length, 1);
+
+  const globalUndoAck = await emitWithAck(dm, "history:undo", {
+    version: 1,
+    campaignId: "demo-campaign",
+    sessionId: "demo-session",
+    requestId: "smoke-history-undo",
+  });
+  assert.equal(globalUndoAck.ok, true);
+  assert.equal(globalUndoAck.history.canRedo, true);
+
+  const globalRedoAck = await emitWithAck(dm, "history:redo", {
+    version: 1,
+    campaignId: "demo-campaign",
+    sessionId: "demo-session",
+    requestId: "smoke-history-redo",
+  });
+  assert.equal(globalRedoAck.ok, true);
+  assert.equal(globalRedoAck.history.canUndo, true);
+
+  const restoreAck = await emitWithAck(dm, "history:snapshot:restore", {
+    version: 1,
+    campaignId: "demo-campaign",
+    sessionId: "demo-session",
+    snapshotId: snapshotAck.history.snapshots[0].id,
+    requestId: "smoke-history-restore",
+  });
+  assert.equal(restoreAck.ok, true);
+
   const playerKicked = waitFor(player, "disconnect");
   const displayKicked = waitFor(display, "disconnect");
   await authService.revokeTableAccess(
@@ -1115,6 +1203,19 @@ async function getJson(url, token = dmAccessToken) {
 async function postJson(url, body, token = dmAccessToken) {
   const response = await fetch(url, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  assert.equal(response.ok, true, `${url} returned ${response.status}`);
+  return response.json();
+}
+
+async function patchJson(url, body, token = dmAccessToken) {
+  const response = await fetch(url, {
+    method: "PATCH",
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

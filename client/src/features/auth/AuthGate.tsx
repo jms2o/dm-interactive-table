@@ -7,6 +7,8 @@ import type {
 } from '../../../../shared/types/auth'
 import type { ClientRole } from '../../../../shared/types/realtime'
 import { GameWorkspace } from '../game/GameWorkspace'
+import { SessionBoundary } from '../session/SessionBoundary'
+import { SessionLobby } from '../session/SessionLobby'
 import {
   activateSession,
   clearSession,
@@ -26,6 +28,7 @@ export function AuthGate({ role }: AuthGateProps) {
   )
   const [setupRequired, setSetupRequired] = useState(false)
   const [checking, setChecking] = useState(true)
+  const [showDmLobby, setShowDmLobby] = useState(role === 'dm')
 
   useEffect(() => {
     let active = true
@@ -126,18 +129,47 @@ export function AuthGate({ role }: AuthGateProps) {
           saveSession(role, nextSession)
           setSession(nextSession)
           setSetupRequired(false)
+          setShowDmLobby(role === 'dm')
         }}
       />
     )
   }
 
-  return (
+  if (role === 'dm' && showDmLobby) {
+    return (
+      <SessionLobby
+        session={session}
+        onLogout={handleLogout}
+        onSelect={(nextSession) => {
+          saveSession(role, nextSession)
+          activateSession(nextSession)
+          setSession(nextSession)
+          setShowDmLobby(false)
+        }}
+      />
+    )
+  }
+
+  const workspace = (
     <GameWorkspace
       role={role}
       accessToken={session.socketToken}
       principal={session.principal}
       onLogout={handleLogout}
+      onReturnToLobby={role === 'dm' ? () => setShowDmLobby(true) : undefined}
     />
+  )
+
+  if (role === 'dm') return workspace
+
+  return (
+    <SessionBoundary
+      role={role}
+      principal={session.principal}
+      onLogout={handleLogout}
+    >
+      {workspace}
+    </SessionBoundary>
   )
 }
 

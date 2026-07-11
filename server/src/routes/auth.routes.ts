@@ -4,6 +4,8 @@ import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import type { AuthSessionResponse } from "../../../shared/types/auth";
 import { env } from "../config/env";
+import { gameState } from "../game/game.state";
+import { campaignService } from "../modules/campaign/campaign.service";
 import { authService } from "../security";
 import {
   DM_SESSION_COOKIE,
@@ -34,6 +36,11 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
   password: z.string().min(1).max(128),
+});
+
+const contextSchema = z.object({
+  campaignId: z.string().trim().min(1).max(120),
+  sessionId: z.string().trim().min(1).max(120),
 });
 
 export const authRouter = Router();
@@ -76,6 +83,46 @@ authRouter.get("/me", asyncHandler(async (request, response) => {
   }
 
   response.status(200).json(await authService.sessionFromToken(token));
+}));
+
+authRouter.post("/context", asyncHandler(async (request, response) => {
+  const token = tokenFromRequest(request, "dm");
+  if (!token) {
+    response.status(401).json({
+      error: { code: "AUTH_REQUIRED", message: "No hay una sesion DM activa" },
+    });
+    return;
+  }
+
+  const input = contextSchema.parse(request.body);
+  const principal = await authService.validateToken(token);
+  const session = campaignService.getSession(input.campaignId, input.sessionId);
+  if (!session) {
+    response.status(404).json({
+      error: { code: "SESSION_NOT_FOUND", message: "La sesion no existe" },
+    });
+    return;
+  }
+
+  const liveSession = campaignService.getRuntimeSession();
+  if (liveSession.phase === "live" && liveSession.id !== session.id) {
+    response.status(409).json({
+      error: {
+        code: "SESSION_ALREADY_LIVE",
+        message: "Finaliza la sesion en vivo antes de cambiar de mesa",
+      },
+    });
+    return;
+  }
+
+  const scopedSession = authService.scopeDmSession(
+    principal,
+    input.campaignId,
+    input.sessionId,
+  );
+  await gameState.activateContext(input.campaignId, input.sessionId, session.title);
+  setSessionCookie(response, "dm", scopedSession);
+  response.status(200).json(scopedSession);
 }));
 
 authRouter.post("/logout", (request, response) => {

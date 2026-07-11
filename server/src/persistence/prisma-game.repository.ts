@@ -16,6 +16,7 @@ import {
 } from "../generated/prisma/enums";
 import type {
   GameStateRepository,
+  NamedSceneSnapshotRecord,
   NarrativePersistenceUpdate,
   SceneSnapshot,
   TokenPositionUpdate,
@@ -55,42 +56,16 @@ export class PrismaGameStateRepository implements GameStateRepository {
       },
     });
 
-    if (!scene) {
-      return null;
-    }
+    return scene ? mapPrismaScene(campaignId, scene) : null;
+  }
 
-    return {
-      campaignId,
-      sessionId: scene.sessionId ?? "",
-      scene: {
-        id: scene.id,
-        name: scene.name,
-        narrativeText: scene.narrativeText,
-        map: {
-          id: scene.battleMap.id,
-          assetId: scene.battleMap.assetId ?? undefined,
-          name: scene.battleMap.name,
-          imageUrl: scene.battleMap.imageUrl,
-          gridSize: scene.battleMap.gridSize,
-          width: scene.battleMap.width,
-          height: scene.battleMap.height,
-        },
-        tokens: scene.tokens.map((token) => ({
-          id: token.id,
-          imageAssetId: token.imageAssetId ?? undefined,
-          name: token.name,
-          type: tokenTypeFromPrisma[token.entityType] ?? "object",
-          x: token.x,
-          y: token.y,
-          size: token.size,
-          color: token.color,
-          visible: token.visible,
-        })),
-        experience: readExperience(scene.sceneState),
-      },
-      dmNarrativeText: scene.dmNotes,
-      updatedAt: scene.updatedAt.toISOString(),
-    };
+  async loadSessionScene(campaignId: string, sessionId: string) {
+    const scene = await this.prisma.scene.findFirst({
+      where: { campaignId, sessionId, isActive: true },
+      include: { battleMap: true, tokens: true },
+      orderBy: { updatedAt: "desc" },
+    });
+    return scene ? mapPrismaScene(campaignId, scene) : null;
   }
 
   async saveSceneSnapshot(snapshot: SceneSnapshot): Promise<void> {
@@ -99,10 +74,7 @@ export class PrismaGameStateRepository implements GameStateRepository {
     await this.prisma.$transaction(async (tx) => {
       await tx.campaign.upsert({
         where: { id: snapshot.campaignId },
-        update: {
-          name: "Demo Campaign",
-          status: "ACTIVE",
-        },
+        update: {},
         create: {
           id: snapshot.campaignId,
           name: "Demo Campaign",
@@ -115,13 +87,11 @@ export class PrismaGameStateRepository implements GameStateRepository {
       if (snapshot.sessionId) {
         await tx.gameSession.upsert({
           where: { id: snapshot.sessionId },
-          update: {
-            title: "Demo Session",
-          },
+          update: {},
           create: {
             id: snapshot.sessionId,
             campaignId: snapshot.campaignId,
-            title: "Demo Session",
+            title: "Session",
           },
         });
       }
@@ -169,6 +139,16 @@ export class PrismaGameStateRepository implements GameStateRepository {
         },
       });
 
+      const snapshotTokenIds = snapshot.scene.tokens.map((token) => token.id);
+      await tx.gameToken.deleteMany({
+        where: {
+          sceneId: snapshot.scene.id,
+          ...(snapshotTokenIds.length > 0
+            ? { id: { notIn: snapshotTokenIds } }
+            : {}),
+        },
+      });
+
       for (const token of snapshot.scene.tokens) {
         await upsertToken(tx, snapshot.scene.id, token);
       }
@@ -199,6 +179,158 @@ export class PrismaGameStateRepository implements GameStateRepository {
           : { dmNotes: update.text },
     });
   }
+
+  async listNamedSnapshots(campaignId: string, sessionId: string) {
+    const records = await this.prisma.gameSnapshot.findMany({
+      where: { campaignId, sessionId },
+      orderBy: { createdAt: "desc" },
+    });
+    return records
+      .map(mapPrismaNamedSnapshot)
+      .filter((record): record is NamedSceneSnapshotRecord => Boolean(record));
+  }
+
+  async saveNamedSnapshot(record: NamedSceneSnapshotRecord) {
+    await this.prisma.gameSnapshot.create({
+      data: {
+        id: record.id,
+        campaignId: record.campaignId,
+        sessionId: record.sessionId,
+        sceneId: record.sceneId,
+        createdById: record.createdById,
+        name: record.name,
+        payload: toJsonValue(record.snapshot),
+        createdAt: new Date(record.createdAt),
+      },
+    });
+  }
+
+  async loadNamedSnapshot(snapshotId: string) {
+    const record = await this.prisma.gameSnapshot.findUnique({
+      where: { id: snapshotId },
+    });
+    return record ? mapPrismaNamedSnapshot(record) : null;
+  }
+
+  async deleteNamedSnapshot(snapshotId: string) {
+    await this.prisma.gameSnapshot.deleteMany({ where: { id: snapshotId } });
+  }
+}
+
+function mapPrismaScene(
+  campaignId: string,
+  scene: {
+    id: string;
+    sessionId: string | null;
+    name: string;
+    narrativeText: string;
+    dmNotes: string;
+    sceneState: unknown;
+    updatedAt: Date;
+    battleMap: {
+      id: string;
+      assetId: string | null;
+      name: string;
+      imageUrl: string;
+      gridSize: number;
+      width: number;
+      height: number;
+    };
+    tokens: Array<{
+      id: string;
+      imageAssetId: string | null;
+      name: string;
+      entityType: string;
+      x: number;
+      y: number;
+      size: number;
+      color: string;
+      visible: boolean;
+    }>;
+  },
+): SceneSnapshot {
+  return {
+    campaignId,
+    sessionId: scene.sessionId ?? "",
+    scene: {
+      id: scene.id,
+      name: scene.name,
+      narrativeText: scene.narrativeText,
+      map: {
+        id: scene.battleMap.id,
+        assetId: scene.battleMap.assetId ?? undefined,
+        name: scene.battleMap.name,
+        imageUrl: scene.battleMap.imageUrl,
+        gridSize: scene.battleMap.gridSize,
+        width: scene.battleMap.width,
+        height: scene.battleMap.height,
+      },
+      tokens: scene.tokens.map((token) => ({
+        id: token.id,
+        imageAssetId: token.imageAssetId ?? undefined,
+        name: token.name,
+        type: tokenTypeFromPrisma[token.entityType] ?? "object",
+        x: token.x,
+        y: token.y,
+        size: token.size,
+        color: token.color,
+        visible: token.visible,
+      })),
+      experience: readExperience(scene.sceneState),
+    },
+    dmNarrativeText: scene.dmNotes,
+    updatedAt: scene.updatedAt.toISOString(),
+  };
+}
+
+function mapPrismaNamedSnapshot(record: {
+  id: string;
+  campaignId: string;
+  sessionId: string;
+  sceneId: string;
+  createdById: string | null;
+  name: string;
+  payload: unknown;
+  createdAt: Date;
+}): NamedSceneSnapshotRecord | null {
+  const snapshot = readSnapshotPayload(record.payload);
+  if (!snapshot) return null;
+  return {
+    id: record.id,
+    campaignId: record.campaignId,
+    sessionId: record.sessionId,
+    sceneId: record.sceneId,
+    createdById: record.createdById ?? undefined,
+    name: record.name,
+    createdAt: record.createdAt.toISOString(),
+    snapshot,
+  };
+}
+
+function readSnapshotPayload(value: unknown): SceneSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as Partial<SceneSnapshot>;
+  if (
+    typeof snapshot.campaignId !== "string" ||
+    typeof snapshot.sessionId !== "string" ||
+    !snapshot.scene ||
+    typeof snapshot.scene.id !== "string" ||
+    typeof snapshot.updatedAt !== "string"
+  ) {
+    return null;
+  }
+  return {
+    campaignId: snapshot.campaignId,
+    sessionId: snapshot.sessionId,
+    scene: {
+      ...snapshot.scene,
+      map: { ...snapshot.scene.map },
+      tokens: snapshot.scene.tokens.map((token) => ({ ...token })),
+      experience: readExperience(snapshot.scene.experience),
+    },
+    dmNarrativeText: snapshot.dmNarrativeText ?? "",
+    updatedAt: snapshot.updatedAt,
+  };
 }
 
 function toJsonValue(value: unknown): InputJsonValue {

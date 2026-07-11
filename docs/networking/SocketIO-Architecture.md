@@ -349,6 +349,29 @@ Desde `2.0.0-alpha.9`, `rename` valida nombres únicos por escena, `delete` no d
 
 Desde `2.0.0-alpha.21`, el handshake exige `socket.handshake.auth.token`. El servidor verifica firma, expiración, rol, `campaignId` y `sessionId`; nunca toma el rol declarado por el navegador como autoridad. Solo después une el socket a rooms autorizadas.
 
+## Session Workflow 2.0.0-alpha.22
+
+- Cada socket entra también a `session:{sessionId}` y registra presencia efímera.
+- `session:updated` anuncia cambios `preparation`, `live` o `ended`.
+- Jugador y display reciben un `game:state` sin `scene` mientras la sesión no
+  esté `live`.
+- Los comandos de jugador se rechazan fuera de partida.
+- El contexto real de escena se resuelve en servidor; `sceneId` del handshake no
+  puede redirigir el socket a otra escena.
+
+Eventos DM de historial:
+
+| Evento | Payload adicional | Resultado |
+| --- | --- | --- |
+| `history:undo` | contrato base | restaura el estado anterior completo |
+| `history:redo` | contrato base | reaplica el cambio deshecho |
+| `history:snapshot:create` | `name` | guarda un punto durable |
+| `history:snapshot:restore` | `snapshotId` | restaura y conserva undo |
+| `history:snapshot:delete` | `snapshotId` | elimina el punto nombrado |
+
+Todos incluyen `version`, `campaignId`, `sessionId` y `requestId`; usan la misma
+idempotencia y autorización que el resto de comandos críticos.
+
 Cada comando valida nuevamente que el `campaignId` del payload coincide con el principal. Los `requestId` se cachean por identidad y evento durante cinco minutos: un reintento recibe el mismo ack sin repetir la mutación. El servidor limita cada payload a 64 KiB y aplica un límite de eventos por ventana.
 
 Antes de emitir al display:

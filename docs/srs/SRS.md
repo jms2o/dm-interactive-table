@@ -69,6 +69,11 @@ Configura entorno, base de datos, claves de IA, assets y despliegue.
 - FR-CAM-004: El sistema debe permitir importar o generar contenido inicial con IA bajo aprobación del DM.
 - FR-CAM-005: El sistema debe registrar sesiones jugadas y vincularlas con escenas, encuentros y notas.
 - FR-CAM-006: El sistema debe separar contenido público, privado y secreto.
+- FR-CAM-007: El DM debe poder seleccionar campaña y sesión desde un lobby.
+- FR-CAM-008: Una sesión debe transitar por preparación, partida en vivo y cierre.
+- FR-CAM-009: Jugadores y display no deben recibir la escena antes del inicio formal.
+- FR-CAM-010: El jugador debe poder consultar y actualizar su hoja persistente.
+- FR-CAM-011: El DM debe poder deshacer, rehacer y restaurar snapshots nombrados.
 
 ### 5.2 Escenas y mapas
 
@@ -236,7 +241,7 @@ Configura entorno, base de datos, claves de IA, assets y despliegue.
 | FR-CBT-001 a FR-CBT-006 | `modules/Combat-Engine.md` | combat service, shared combat types |
 | FR-DICE-001 a FR-DICE-005 | `modules/Dice-Engine.md` | dice parser/service |
 | FR-NPC-001 a FR-NPC-004 | `modules/NPC-Engine.md` | NPC CRUD, AI suggestions |
-| FR-CAM-001 a FR-CAM-006 | `modules/Campaign-Engine.md` | campaigns API, DB models |
+| FR-CAM-001 a FR-CAM-011 | `modules/Campaign-Engine.md`, `implementation/phase-2.0-session-workflow.md` | campaigns/workflow API, DB models, history socket events |
 | FR-AI-001 a FR-AI-005 | `modules/AI-Engine.md` | AI adapter, prompt logs |
 | FR-NET-001 a FR-NET-005 | `networking/SocketIO-Architecture.md` | `server/src/socket.ts`, client socket store |
 

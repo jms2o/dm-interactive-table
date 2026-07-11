@@ -2,6 +2,10 @@ import type { Server, Socket } from "socket.io";
 import { z } from "zod";
 import type { AuthPrincipal } from "../../shared/types/auth";
 import type {
+  HistoryActionAck,
+  HistoryCommand,
+} from "../../shared/types/session-workflow";
+import type {
   AudioMixerAck,
   AudioPresetAck,
   AssetCueAck,
@@ -26,6 +30,8 @@ import {
 } from "./game/game.state";
 import { combatService } from "./modules/combat/combat.service";
 import { diceService } from "./modules/dice/dice.service";
+import { campaignService } from "./modules/campaign/campaign.service";
+import { sessionWorkflowService } from "./modules/session/session-workflow.service";
 import { authService } from "./security";
 
 type Ack<T> = (payload: T) => void;
@@ -281,6 +287,21 @@ const audioPresetManageSchema = z.object({
   requestId: z.string().min(1),
 });
 
+const historyCommandSchema = z.object({
+  version: z.literal(1),
+  campaignId: z.string().min(1),
+  sessionId: z.string().min(1),
+  requestId: z.string().min(1),
+});
+
+const historySnapshotCreateSchema = historyCommandSchema.extend({
+  name: z.string().trim().min(1).max(80),
+});
+
+const historySnapshotTargetSchema = historyCommandSchema.extend({
+  snapshotId: z.string().min(1),
+});
+
 export function configureSocket(io: Server) {
   const commandResults = new Map<string, CommandResultCacheEntry>();
   const stopListeningForRevocation = authService.onTableAccessRevoked(
@@ -304,7 +325,14 @@ export function configureSocket(io: Server) {
       }
     },
   );
-  io.engine.once("close", stopListeningForRevocation);
+  const stopListeningForSessionChanges =
+    sessionWorkflowService.onSessionChanged((session) => {
+      io.to(roomNames.session(session.id)).emit("session:updated", session);
+    });
+  io.engine.once("close", () => {
+    stopListeningForRevocation();
+    stopListeningForSessionChanges();
+  });
 
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
@@ -358,7 +386,11 @@ export function configureSocket(io: Server) {
     installSocketGuards(socket, commandResults);
     const context = contextFromSocket(socket);
     joinContextRooms(socket, context);
-    socket.emit("game:state", gameState.getSnapshot(context.role));
+    sessionWorkflowService.presence.connect(
+      context.sessionId,
+      principalFromSocket(socket),
+    );
+    socket.emit("game:state", snapshotForContext(context));
     emitActiveEncounter(socket, context);
 
     socket.on("client:join", (rawPayload, ack?: Ack<GameStatePayload>) => {
@@ -384,15 +416,22 @@ export function configureSocket(io: Server) {
         return;
       }
 
+      const activeSnapshot = gameState.getSnapshot(principal.role);
       const nextContext: ClientContext = {
         ...requestedContext,
         campaignId: principal.campaignId,
         sessionId: principal.sessionId ?? requestedContext.sessionId,
+        sceneId: activeSnapshot.sceneId ?? requestedContext.sceneId,
         role: principal.role,
       };
+      sessionWorkflowService.presence.disconnect(
+        activeContextFromSocket(socket).sessionId,
+        principal.id,
+      );
       leaveContextRooms(socket);
       joinContextRooms(socket, nextContext);
-      const snapshot = gameState.getSnapshot(nextContext.role);
+      sessionWorkflowService.presence.connect(nextContext.sessionId, principal);
+      const snapshot = snapshotForContext(nextContext);
       socket.emit("game:state", snapshot);
       emitActiveEncounter(socket, nextContext);
       ack?.(snapshot);
@@ -400,10 +439,101 @@ export function configureSocket(io: Server) {
 
     socket.on("game:state:request", (_payload, ack?: Ack<GameStatePayload>) => {
       const activeContext = activeContextFromSocket(socket);
-      const snapshot = gameState.getSnapshot(activeContext.role);
+      const snapshot = snapshotForContext(activeContext);
       socket.emit("game:state", snapshot);
       ack?.(snapshot);
     });
+
+    socket.on("disconnect", () => {
+      const activeContext = activeContextFromSocket(socket);
+      sessionWorkflowService.presence.disconnect(
+        activeContext.sessionId,
+        principalFromSocket(socket).id,
+      );
+    });
+
+    socket.on(
+      "history:undo",
+      (rawPayload, ack?: Ack<HistoryActionAck>) => {
+        handleHistoryCommand(
+          io,
+          socket,
+          rawPayload,
+          ack,
+          historyCommandSchema,
+          () => gameState.undoHistory(),
+        );
+      },
+    );
+
+    socket.on(
+      "history:redo",
+      (rawPayload, ack?: Ack<HistoryActionAck>) => {
+        handleHistoryCommand(
+          io,
+          socket,
+          rawPayload,
+          ack,
+          historyCommandSchema,
+          () => gameState.redoHistory(),
+        );
+      },
+    );
+
+    socket.on(
+      "history:snapshot:create",
+      async (rawPayload, ack?: Ack<HistoryActionAck>) => {
+        await handleAsyncHistoryCommand(
+          io,
+          socket,
+          rawPayload,
+          ack,
+          historySnapshotCreateSchema,
+          async (command) => ({
+            ok: true as const,
+            history: await gameState.createNamedSnapshot(
+              command.name,
+              actorIdFromSocket(socket),
+            ),
+          }),
+        );
+      },
+    );
+
+    socket.on(
+      "history:snapshot:restore",
+      async (rawPayload, ack?: Ack<HistoryActionAck>) => {
+        await handleAsyncHistoryCommand(
+          io,
+          socket,
+          rawPayload,
+          ack,
+          historySnapshotTargetSchema,
+          async (command) => ({
+            ok: true as const,
+            history: await gameState.restoreNamedSnapshot(command.snapshotId),
+          }),
+        );
+      },
+    );
+
+    socket.on(
+      "history:snapshot:delete",
+      async (rawPayload, ack?: Ack<HistoryActionAck>) => {
+        await handleAsyncHistoryCommand(
+          io,
+          socket,
+          rawPayload,
+          ack,
+          historySnapshotTargetSchema,
+          async (command) => ({
+            ok: true as const,
+            history: await gameState.deleteNamedSnapshot(command.snapshotId),
+          }),
+          false,
+        );
+      },
+    );
 
     socket.on("token:move", (rawPayload, ack?: Ack<TokenMoveAck>) => {
       if (
@@ -543,6 +673,22 @@ export function configureSocket(io: Server) {
           ok: false,
           requestId: parsed.data.requestId,
           error: "Players cannot create DM-only rolls",
+        });
+        return;
+      }
+
+      const diceContext = activeContextFromSocket(socket);
+      if (
+        diceContext.role === "player" &&
+        !campaignService.isSessionLive(
+          diceContext.campaignId,
+          diceContext.sessionId,
+        )
+      ) {
+        ack?.({
+          ok: false,
+          requestId: parsed.data.requestId,
+          error: "The session is not live",
         });
         return;
       }
@@ -1035,6 +1181,7 @@ export function configureSocket(io: Server) {
 
 function contextFromSocket(socket: Socket): ClientContext {
   const principal = principalFromSocket(socket);
+  const activeSnapshot = gameState.getSnapshot(principal.role);
   const sceneId = z
     .string()
     .min(1)
@@ -1043,7 +1190,13 @@ function contextFromSocket(socket: Socket): ClientContext {
   return {
     campaignId: principal.campaignId,
     sessionId: principal.sessionId ?? DEFAULT_SESSION_ID,
-    sceneId: sceneId.success ? sceneId.data : DEFAULT_SCENE_ID,
+    sceneId:
+      activeSnapshot.campaignId === principal.campaignId &&
+      activeSnapshot.sessionId === (principal.sessionId ?? DEFAULT_SESSION_ID)
+        ? (activeSnapshot.sceneId ?? DEFAULT_SCENE_ID)
+        : sceneId.success
+          ? sceneId.data
+          : DEFAULT_SCENE_ID,
     role: principal.role,
   };
 }
@@ -1057,6 +1210,7 @@ function activeContextFromSocket(socket: Socket): ClientContext {
 function joinContextRooms(socket: Socket, context: ClientContext) {
   socket.data.context = context;
   socket.join(roomNames.campaign(context.campaignId));
+  socket.join(roomNames.session(context.sessionId));
   socket.join(roomNames.scene(context.sceneId));
 
   if (context.role === "dm") {
@@ -1082,18 +1236,36 @@ function leaveContextRooms(socket: Socket) {
 }
 
 function emitRoleSnapshots(io: Server, campaignId: string, sceneId: string) {
-  io.to(roomNames.dm(campaignId)).emit("game:state", gameState.getSnapshot("dm"));
+  const dmSnapshot = gameState.getSnapshot("dm");
+  const sessionId = dmSnapshot.sessionId ?? DEFAULT_SESSION_ID;
+  io.to(roomNames.dm(campaignId)).emit("game:state", dmSnapshot);
   io.to(roomNames.display(sceneId)).emit(
     "game:state",
-    gameState.getSnapshot("display"),
+    snapshotForContext({
+      campaignId,
+      sessionId,
+      sceneId,
+      role: "display",
+    }),
   );
   io.to(roomNames.players(sceneId)).emit(
     "game:state",
-    gameState.getSnapshot("player"),
+    snapshotForContext({
+      campaignId,
+      sessionId,
+      sceneId,
+      role: "player",
+    }),
   );
 }
 
 function emitActiveEncounter(socket: Socket, context: ClientContext) {
+  if (
+    context.role !== "dm" &&
+    !campaignService.isSessionLive(context.campaignId, context.sessionId)
+  ) {
+    return;
+  }
   const encounter = combatService.getActiveEncounter(
     context.campaignId,
     context.sceneId,
@@ -1137,6 +1309,121 @@ function emitExperienceUpdate(
   io.to(roomNames.dm(campaignId)).emit(payload.eventName, payload.event);
   io.to(roomNames.display(sceneId)).emit(payload.eventName, payload.event);
   io.to(roomNames.players(sceneId)).emit(payload.eventName, payload.event);
+}
+
+function snapshotForContext(context: ClientContext): GameStatePayload {
+  const snapshot = gameState.getSnapshot(context.role);
+  const contextMatches =
+    snapshot.campaignId === context.campaignId &&
+    snapshot.sessionId === context.sessionId;
+  const canSeeScene =
+    context.role === "dm" ||
+    campaignService.isSessionLive(context.campaignId, context.sessionId);
+
+  if (contextMatches && canSeeScene) return snapshot;
+
+  return {
+    version: 1,
+    campaignId: context.campaignId,
+    sessionId: context.sessionId,
+    updatedAt: snapshot.updatedAt,
+  };
+}
+
+function handleHistoryCommand<T extends HistoryCommand>(
+  io: Server,
+  socket: Socket,
+  rawPayload: unknown,
+  ack: Ack<HistoryActionAck> | undefined,
+  schema: z.ZodType<T>,
+  operation: (command: T) => {
+    ok: boolean;
+    error?: string;
+    history?: HistoryActionAck["history"];
+  },
+) {
+  void handleAsyncHistoryCommand(
+    io,
+    socket,
+    rawPayload,
+    ack,
+    schema,
+    async (command) => operation(command),
+  );
+}
+
+async function handleAsyncHistoryCommand<T extends HistoryCommand>(
+  io: Server,
+  socket: Socket,
+  rawPayload: unknown,
+  ack: Ack<HistoryActionAck> | undefined,
+  schema: z.ZodType<T>,
+  operation: (command: T) => Promise<{
+    ok: boolean;
+    error?: string;
+    history?: HistoryActionAck["history"];
+  }>,
+  emitScene = true,
+) {
+  if (
+    !requireRole(
+      socket,
+      "dm",
+      ack,
+      rawPayload,
+      "Only the DM can manage history",
+    )
+  ) {
+    return;
+  }
+
+  const parsed = schema.safeParse(rawPayload);
+  if (!parsed.success) {
+    ack?.({
+      ok: false,
+      requestId: requestIdFromPayload(rawPayload),
+      error: "Invalid history command",
+    });
+    return;
+  }
+
+  const context = activeContextFromSocket(socket);
+  if (
+    parsed.data.campaignId !== context.campaignId ||
+    parsed.data.sessionId !== context.sessionId
+  ) {
+    ack?.({
+      ok: false,
+      requestId: parsed.data.requestId,
+      error: "History context is not authorized",
+    });
+    return;
+  }
+
+  try {
+    const result = await operation(parsed.data);
+    const response = { ...result, requestId: parsed.data.requestId };
+    ack?.(response);
+    if (!result.ok) return;
+
+    if (result.history) {
+      io.to(roomNames.dm(context.campaignId)).emit(
+        "history:updated",
+        result.history,
+      );
+    }
+
+    if (emitScene) {
+      const sceneId = gameState.getSnapshot("dm").sceneId ?? context.sceneId;
+      emitRoleSnapshots(io, context.campaignId, sceneId);
+    }
+  } catch (error) {
+    ack?.({
+      ok: false,
+      requestId: parsed.data.requestId,
+      error: error instanceof Error ? error.message : "History command failed",
+    });
+  }
 }
 
 function requireRole<T extends { ok: boolean; requestId: string; error?: string }>(

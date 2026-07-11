@@ -24,6 +24,7 @@ import {
   rulesetCatalogRouter,
 } from "./routes/ruleset.routes";
 import { tableAccessRouter } from "./routes/table-access.routes";
+import { sessionWorkflowRouter } from "./routes/session-workflow.routes";
 import {
   authorizeApiRequest,
   requireAuth,
@@ -55,7 +56,7 @@ export function createApp() {
   const apiMetadata = (_request: Request, response: Response) => {
     response.status(200).json({
       name: "DM Interactive Table API",
-      version: "2.0.0-alpha.21",
+      version: "2.0.0-alpha.22",
       docs: "/api/health",
     });
   };
@@ -75,6 +76,10 @@ export function createApp() {
   app.use("/api/campaign-packages", campaignPackageImportRouter);
   app.use("/api/rulesets", rulesetCatalogRouter);
   app.use("/api/worlds", worldRouter);
+  app.use(
+    "/api/campaigns/:campaignId/workflow",
+    sessionWorkflowRouter,
+  );
   app.use("/api/campaigns", campaignRouter);
   app.use("/api/campaigns/:campaignId/package", campaignPackageRouter);
   app.use("/api/campaigns/:campaignId/assets", assetRouter);

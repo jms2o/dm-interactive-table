@@ -93,6 +93,12 @@ test("table codes assign fixed roles and can be revoked", async () => {
     assert.equal(player.principal.role, "player");
     assert.equal(player.principal.campaignId, "demo-campaign");
     assert.equal(service.verifyToken(player.socketToken).role, "player");
+    const rejoinedPlayer = await service.joinTable({
+      code: grant.code,
+      role: "player",
+      displayName: "Aelar",
+    });
+    assert.equal(rejoinedPlayer.principal.id, player.principal.id);
 
     await service.createTableAccess(dmSession.principal, {
       campaignId: "demo-campaign",

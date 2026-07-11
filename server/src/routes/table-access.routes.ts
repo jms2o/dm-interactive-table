@@ -3,6 +3,7 @@ import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { authService } from "../security";
+import { campaignService } from "../modules/campaign/campaign.service";
 import { handleSecurityError, requireAuth } from "../security/http-auth";
 import { setTableSessionCookie } from "./auth.routes";
 
@@ -35,6 +36,7 @@ const createSchema = z.object({
 
 const campaignQuerySchema = z.object({
   campaignId: z.string().min(1),
+  sessionId: z.string().min(1).optional(),
 });
 
 export const tableAccessRouter = Router();
@@ -54,9 +56,21 @@ tableAccessRouter.use(requireAuth);
 tableAccessRouter.post(
   "/",
   asyncHandler(async (request, response) => {
+    const principal = requirePrincipal(request);
+    const input = createSchema.parse(request.body);
+    const sessionId = input.sessionId ?? principal.sessionId;
+    if (
+      !sessionId ||
+      !campaignService.getSession(input.campaignId, sessionId)
+    ) {
+      response.status(404).json({
+        error: { code: "SESSION_NOT_FOUND", message: "La sesion no existe" },
+      });
+      return;
+    }
     const grant = await authService.createTableAccess(
-      requirePrincipal(request),
-      createSchema.parse(request.body),
+      principal,
+      { ...input, sessionId },
     );
     response.status(201).json(grant);
   }),
@@ -65,13 +79,14 @@ tableAccessRouter.post(
 tableAccessRouter.get(
   "/",
   asyncHandler(async (request, response) => {
-    const { campaignId } = campaignQuerySchema.parse(request.query);
+    const { campaignId, sessionId } = campaignQuerySchema.parse(request.query);
     response
       .status(200)
       .json(
         await authService.getTableAccessStatus(
           requirePrincipal(request),
           campaignId,
+          sessionId,
         ),
       );
   }),

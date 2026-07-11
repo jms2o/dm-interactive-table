@@ -12,7 +12,7 @@ const compose = parse(
 )
 
 assert.equal(openApi.openapi, '3.1.0')
-assert.equal(openApi.info.version, '2.0.0-alpha.21')
+assert.equal(openApi.info.version, '2.0.0-alpha.22')
 assert.ok(openApi.paths['/auth/login'])
 assert.ok(openApi.paths['/table-access/join'])
 assert.ok(openApi.components.securitySchemes.bearerAuth)

@@ -11,7 +11,7 @@ import { assetService } from "../asset/asset.service";
 import { campaignService } from "../campaign/campaign.service";
 import { rulesetService } from "../ruleset/ruleset.service";
 
-const DEMO_VERSION = "2.0.0-alpha.21";
+const DEMO_VERSION = "2.0.0-alpha.22";
 
 export class DemoService {
   getReadiness(): DemoReadinessResponse {
@@ -147,6 +147,26 @@ export class DemoService {
         "Autosave serializado, snapshots locales/Prisma y reconexión idempotente",
       ),
       ready(
+        "session-lobby",
+        "Lobby de sesiones",
+        "Selector de campaña, presencia y contexto DM firmado",
+      ),
+      ready(
+        "session-lifecycle",
+        "Ciclo de sesión",
+        "Preparación, partida en vivo y cierre persistentes",
+      ),
+      ready(
+        "player-character-sheet",
+        "Hoja de jugador",
+        "HP, CA, nivel, notas y recursos aislados por participante",
+      ),
+      ready(
+        "global-history",
+        "Historial global",
+        "Undo/redo y snapshots nombrados restaurables",
+      ),
+      ready(
         "delivery-pipeline",
         "Entrega reproducible",
         "Docker Compose, GitHub Actions, CodeQL y Playwright",
@@ -203,7 +223,7 @@ export class DemoService {
 
     return {
       version: DEMO_VERSION,
-      releaseName: "Session Reliability",
+      releaseName: "Session Workflow",
       allReady: readyCount === items.length,
       readyCount,
       totalCount: items.length,
@@ -223,6 +243,7 @@ export class DemoService {
         "npm run lint --prefix client",
         "npm run prisma:validate --prefix server",
         "npm run test:smoke",
+        "npm run test:workflow",
         "npm run test:e2e",
       ],
       updatedAt: new Date().toISOString(),

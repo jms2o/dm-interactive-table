@@ -48,7 +48,7 @@ export function TableAccessControl({
         }
         const [statusResponse, networkResponse] = await Promise.all([
           fetch(
-            `${API_URL}/table-access?campaignId=${encodeURIComponent(campaignId)}`,
+            `${API_URL}/table-access?campaignId=${encodeURIComponent(campaignId)}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ''}`,
             options,
           ),
           fetch(`${API_URL}/network`, options),
@@ -74,7 +74,7 @@ export function TableAccessControl({
     return () => {
       active = false
     }
-  }, [open, campaignId])
+  }, [open, campaignId, sessionId])
 
   const joinUrl = useMemo(() => {
     if (!grant) return ''

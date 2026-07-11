@@ -111,6 +111,36 @@ sequenceDiagram
 - La IA funciona como asistente revisable.
 - Los documentos de diseño son parte del contrato del proyecto.
 
+## Session Workflow
+
+`SessionWorkflowService` coordina el ciclo de vida sin absorber las reglas del
+tablero. `CampaignService` mantiene el catálogo y las fases persistentes;
+`GameStateStore` activa una escena por contexto y conserva el historial; la
+capa de seguridad reemite el token DM para la campaña y sesión elegidas.
+
+```mermaid
+sequenceDiagram
+  participant DM as DM Lobby
+  participant Auth as Auth Service
+  participant Campaign as Campaign Service
+  participant Core as Game State Store
+  participant Player as Player Client
+
+  DM->>Auth: POST /auth/context
+  Auth->>Campaign: validar campaña y sesión
+  Campaign-->>Auth: session(preparation)
+  Auth->>Core: activateContext(campaignId, sessionId)
+  Auth-->>DM: JWT limitado al contexto
+  DM->>Campaign: start session
+  Campaign-->>Player: session:updated(live)
+  Core-->>Player: game:state público
+```
+
+Solo una sesión puede estar `live` por instancia. Preparación permite editar al
+DM sin exponer la escena; `live` abre la sincronización; `ended` conserva estado
+y resumen. La presencia es efímera, mientras catálogo, personajes y snapshots
+son durables.
+
 ## Estructura propuesta de backend
 
 ```text

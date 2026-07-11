@@ -64,6 +64,9 @@ import {
 import { useRealtimeGame } from './useRealtimeGame'
 import { TableAccessControl } from '../auth/TableAccessControl'
 import { authHeaders } from '../auth/session-storage'
+import { CharacterSheetPanel } from '../session/CharacterSheetPanel'
+import { HistoryControls } from '../session/HistoryControls'
+import { SessionLifecycleControl } from '../session/SessionLifecycleControl'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 const API_ORIGIN = API_URL.replace(/\/api\/?$/, '')
@@ -89,6 +92,7 @@ type GameWorkspaceProps = {
   accessToken: string
   principal: AuthPrincipal
   onLogout: () => void | Promise<void>
+  onReturnToLobby?: () => void
 }
 
 export function GameWorkspace({
@@ -96,6 +100,7 @@ export function GameWorkspace({
   accessToken,
   principal,
   onLogout,
+  onReturnToLobby,
 }: GameWorkspaceProps) {
   const {
     connected,
@@ -106,10 +111,14 @@ export function GameWorkspace({
     advanceTurn,
     applyAudioPreset,
     cueAsset,
+    createSnapshot,
+    deleteSnapshot,
+    history,
     lastRoll,
     manageAudioPreset,
     moveToken,
     requestGameState,
+    redoHistory,
     rollDice,
     sendNarrative,
     startEncounter,
@@ -119,6 +128,8 @@ export function GameWorkspace({
     updateFog,
     updateLighting,
     updateVision,
+    restoreSnapshot,
+    undoHistory,
     visionHistory,
   } = useRealtimeGame(
     role,
@@ -1403,6 +1414,13 @@ export function GameWorkspace({
             <NavLink to="/player">Jugador</NavLink>
           </nav>
           {isDm ? (
+            <SessionLifecycleControl
+              campaignId={state?.campaignId ?? principal.campaignId}
+              sessionId={state?.sessionId ?? principal.sessionId}
+              onReturnToLobby={onReturnToLobby}
+            />
+          ) : null}
+          {isDm ? (
             <TableAccessControl
               campaignId={state?.campaignId ?? principal.campaignId}
               sessionId={state?.sessionId ?? principal.sessionId}
@@ -1434,6 +1452,17 @@ export function GameWorkspace({
               ) : null}
             </div>
           </div>
+
+          {isDm ? (
+            <HistoryControls
+              history={history}
+              undo={undoHistory}
+              redo={redoHistory}
+              createSnapshot={createSnapshot}
+              restoreSnapshot={restoreSnapshot}
+              deleteSnapshot={deleteSnapshot}
+            />
+          ) : null}
 
           <div className="panel-section">
             <span className="section-label">Campaña</span>
@@ -2571,17 +2600,23 @@ export function GameWorkspace({
           ) : (
             <>
               {isPlayer ? (
-                <div className="panel-section tool-panel dice-panel">
-                  <label htmlFor="player-dice-formula">Tus dados</label>
-                  <input
-                    id="player-dice-formula"
-                    value={diceFormula}
-                    onChange={(event) => setDiceFormula(event.target.value)}
+                <>
+                  <CharacterSheetPanel
+                    campaignId={principal.campaignId}
+                    compact
                   />
-                  <button type="button" onClick={handleDiceRoll}>
-                    Tirar público
-                  </button>
-                </div>
+                  <div className="panel-section tool-panel dice-panel">
+                    <label htmlFor="player-dice-formula">Tus dados</label>
+                    <input
+                      id="player-dice-formula"
+                      value={diceFormula}
+                      onChange={(event) => setDiceFormula(event.target.value)}
+                    />
+                    <button type="button" onClick={handleDiceRoll}>
+                      Tirar público
+                    </button>
+                  </div>
+                </>
               ) : null}
 
               <div className="panel-section display-narrative">

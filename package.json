@@ -1,6 +1,6 @@
 {
   "name": "dm-interactive-table",
-  "version": "2.0.0-alpha.21",
+  "version": "2.0.0-alpha.22",
   "private": true,
   "description": "Interactive digital table for D&D campaigns with DM control panel, real-time map sync, and AI-assisted storytelling.",
   "scripts": {
@@ -14,9 +14,10 @@
     "test:layers": "node scripts/map-layers-test.mjs",
     "test:security": "node --test scripts/security.test.js",
     "test:recovery": "node --test scripts/recovery.test.js",
+    "test:workflow": "node --test scripts/session-workflow.test.js",
     "test:e2e": "npm run build && playwright test",
     "docs:validate": "node scripts/validate-docs.mjs",
-    "verify": "npm run build && npm run lint --prefix client && npm run docs:validate && npm run test:vision && npm run test:camera && npm run test:layers && npm run test:security && npm run test:recovery && npm run prisma:validate --prefix server && npm run test:smoke",
+    "verify": "npm run build && npm run lint --prefix client && npm run docs:validate && npm run test:vision && npm run test:camera && npm run test:layers && npm run test:security && npm run test:recovery && npm run test:workflow && npm run prisma:validate --prefix server && npm run test:smoke",
     "install:all": "npm install && npm install --prefix client && npm install --prefix server",
     "setup": "node scripts/setup.mjs"
   },

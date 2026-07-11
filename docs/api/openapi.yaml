@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DM Interactive Table API
-  version: 2.0.0-alpha.21
+  version: 2.0.0-alpha.22
   description: API HTTP para sesiones, campañas, escenas, mapas, combate, dados e IA.
 servers:
   - url: http://localhost:4000/api
@@ -124,6 +124,33 @@ paths:
                 $ref: "#/components/schemas/AuthSession"
         "401":
           description: Sesión ausente o expirada
+  /auth/context:
+    post:
+      summary: Seleccionar el contexto de campaña y sesión del DM
+      operationId: scopeDmSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [campaignId, sessionId]
+              properties:
+                campaignId:
+                  type: string
+                sessionId:
+                  type: string
+      responses:
+        "200":
+          description: Sesión DM reemitida para el contexto seleccionado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "404":
+          description: Campaña o sesión inexistente
+        "409":
+          description: Otra sesión permanece en vivo
   /auth/logout:
     post:
       summary: Cerrar la sesión HTTP
@@ -419,6 +446,106 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GameSession"
+  /campaigns/{campaignId}/workflow:
+    get:
+      summary: Consultar lobby, sesiones y presencia de una campaña
+      operationId: getSessionWorkflow
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Estado actual del workflow
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionWorkflowState"
+  /campaigns/{campaignId}/workflow/sessions/{sessionId}/start:
+    post:
+      summary: Iniciar formalmente una sesión
+      operationId: startGameSession
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Sesión en vivo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionLifecycleResponse"
+        "409":
+          description: Otra sesión ya está en vivo
+  /campaigns/{campaignId}/workflow/sessions/{sessionId}/end:
+    post:
+      summary: Finalizar una sesión y guardar sus resúmenes
+      operationId: endGameSession
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                summaryPublic:
+                  type: string
+                  maxLength: 5000
+                summaryPrivate:
+                  type: string
+                  maxLength: 5000
+      responses:
+        "200":
+          description: Sesión finalizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionLifecycleResponse"
+  /campaigns/{campaignId}/workflow/sessions/{sessionId}/reopen:
+    post:
+      summary: Devolver una sesión finalizada a preparación
+      operationId: reopenGameSession
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          description: Sesión reabierta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionLifecycleResponse"
+  /campaigns/{campaignId}/workflow/character-sheet:
+    get:
+      summary: Consultar la hoja del jugador autenticado
+      operationId: getMyCharacterSheet
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      responses:
+        "200":
+          description: Hoja persistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerCharacterSheet"
+    patch:
+      summary: Actualizar la hoja del jugador autenticado
+      operationId: updateMyCharacterSheet
+      parameters:
+        - $ref: "#/components/parameters/CampaignId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlayerCharacterSheet"
+      responses:
+        "200":
+          description: Hoja actualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlayerCharacterSheet"
   /campaigns/{campaignId}/ruleset:
     get:
       summary: Obtener ruleset activo de campaña
@@ -810,6 +937,12 @@ components:
       required: true
       schema:
         type: string
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
     AuthStatus:
       type: object
@@ -947,7 +1080,7 @@ components:
           enum: [draft, active, archived]
     GameSession:
       type: object
-      required: [id, campaignId, title, summaryPublic, summaryPrivate]
+      required: [id, campaignId, title, phase, summaryPublic, summaryPrivate]
       properties:
         id:
           type: string
@@ -955,6 +1088,9 @@ components:
           type: string
         title:
           type: string
+        phase:
+          type: string
+          enum: [preparation, live, ended]
         scheduledAt:
           type: string
         summaryPublic:
@@ -969,6 +1105,116 @@ components:
           type: string
         scheduledAt:
           type: string
+    SessionParticipant:
+      type: object
+      required: [id, displayName, role, connectedAt]
+      properties:
+        id:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [dm, player, display]
+        connectedAt:
+          type: string
+          format: date-time
+    SessionWorkflowState:
+      type: object
+      required: [campaign, sessions, participantsBySession]
+      properties:
+        campaign:
+          $ref: "#/components/schemas/Campaign"
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/GameSession"
+        participantsBySession:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: "#/components/schemas/SessionParticipant"
+    SessionLifecycleResponse:
+      type: object
+      required: [session]
+      properties:
+        session:
+          $ref: "#/components/schemas/GameSession"
+    PlayerCharacterSheet:
+      type: object
+      required:
+        - id
+        - campaignId
+        - playerKey
+        - name
+        - ancestry
+        - className
+        - level
+        - maxHp
+        - currentHp
+        - temporaryHp
+        - armorClass
+        - notes
+        - resources
+        - updatedAt
+      properties:
+        id:
+          type: string
+        campaignId:
+          type: string
+        playerKey:
+          type: string
+        name:
+          type: string
+        ancestry:
+          type: string
+        className:
+          type: string
+        level:
+          type: integer
+        maxHp:
+          type: integer
+        currentHp:
+          type: integer
+        temporaryHp:
+          type: integer
+        armorClass:
+          type: integer
+        notes:
+          type: string
+        resources:
+          type: object
+          additionalProperties:
+            type: integer
+        updatedAt:
+          type: string
+          format: date-time
+    UpdatePlayerCharacterSheet:
+      type: object
+      properties:
+        name:
+          type: string
+        ancestry:
+          type: string
+        className:
+          type: string
+        level:
+          type: integer
+        maxHp:
+          type: integer
+        currentHp:
+          type: integer
+        temporaryHp:
+          type: integer
+        armorClass:
+          type: integer
+        notes:
+          type: string
+        resources:
+          type: object
+          additionalProperties:
+            type: integer
     DemoReadiness:
       type: object
       required:
@@ -1050,7 +1296,7 @@ components:
           type: string
         appVersion:
           type: string
-          example: 2.0.0-alpha.21
+          example: 2.0.0-alpha.22
         exportedAt:
           type: string
           format: date-time

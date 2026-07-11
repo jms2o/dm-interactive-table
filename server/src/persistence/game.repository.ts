@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { GameScene } from "../../../shared/types/game";
+import type { NamedGameSnapshot } from "../../../shared/types/session-workflow";
 import {
   createDefaultSceneExperience,
   type ActiveAssetCue,
@@ -21,6 +22,11 @@ export type SceneSnapshot = {
   updatedAt: string;
 };
 
+export type NamedSceneSnapshotRecord = NamedGameSnapshot & {
+  createdById?: string;
+  snapshot: SceneSnapshot;
+};
+
 export type TokenPositionUpdate = {
   sceneId: string;
   tokenId: string;
@@ -37,12 +43,23 @@ export type NarrativePersistenceUpdate = {
 export interface GameStateRepository {
   readonly mode: PersistenceMode;
   loadScene(campaignId: string, sceneId: string): Promise<SceneSnapshot | null>;
+  loadSessionScene(
+    campaignId: string,
+    sessionId: string,
+  ): Promise<SceneSnapshot | null>;
   saveSceneSnapshot(snapshot: SceneSnapshot): Promise<void>;
   saveTokenPosition(update: TokenPositionUpdate): Promise<void>;
   saveNarrative(update: NarrativePersistenceUpdate): Promise<void>;
+  listNamedSnapshots(
+    campaignId: string,
+    sessionId: string,
+  ): Promise<NamedSceneSnapshotRecord[]>;
+  saveNamedSnapshot(snapshot: NamedSceneSnapshotRecord): Promise<void>;
+  loadNamedSnapshot(snapshotId: string): Promise<NamedSceneSnapshotRecord | null>;
+  deleteNamedSnapshot(snapshotId: string): Promise<void>;
 }
 
-function cloneSnapshot(snapshot: SceneSnapshot): SceneSnapshot {
+export function cloneSnapshot(snapshot: SceneSnapshot): SceneSnapshot {
   return {
     ...snapshot,
     scene: cloneScene(snapshot.scene),
@@ -52,6 +69,7 @@ function cloneSnapshot(snapshot: SceneSnapshot): SceneSnapshot {
 export class MemoryGameStateRepository implements GameStateRepository {
   readonly mode: PersistenceMode = "memory";
   protected snapshots = new Map<string, SceneSnapshot>();
+  protected namedSnapshots = new Map<string, NamedSceneSnapshotRecord>();
 
   async loadScene(
     campaignId: string,
@@ -63,6 +81,17 @@ export class MemoryGameStateRepository implements GameStateRepository {
 
   async saveSceneSnapshot(snapshot: SceneSnapshot): Promise<void> {
     this.snapshots.set(this.key(snapshot.campaignId, snapshot.scene.id), cloneSnapshot(snapshot));
+  }
+
+  async loadSessionScene(campaignId: string, sessionId: string) {
+    const snapshot = [...this.snapshots.values()]
+      .filter(
+        (candidate) =>
+          candidate.campaignId === campaignId &&
+          candidate.sessionId === sessionId,
+      )
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    return snapshot ? cloneSnapshot(snapshot) : null;
   }
 
   async saveTokenPosition(update: TokenPositionUpdate): Promise<void> {
@@ -105,6 +134,29 @@ export class MemoryGameStateRepository implements GameStateRepository {
     }
   }
 
+  async listNamedSnapshots(campaignId: string, sessionId: string) {
+    return [...this.namedSnapshots.values()]
+      .filter(
+        (record) =>
+          record.campaignId === campaignId && record.sessionId === sessionId,
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(cloneNamedSnapshot);
+  }
+
+  async saveNamedSnapshot(snapshot: NamedSceneSnapshotRecord) {
+    this.namedSnapshots.set(snapshot.id, cloneNamedSnapshot(snapshot));
+  }
+
+  async loadNamedSnapshot(snapshotId: string) {
+    const snapshot = this.namedSnapshots.get(snapshotId);
+    return snapshot ? cloneNamedSnapshot(snapshot) : null;
+  }
+
+  async deleteNamedSnapshot(snapshotId: string) {
+    this.namedSnapshots.delete(snapshotId);
+  }
+
   protected key(campaignId: string, sceneId: string) {
     return `${campaignId}:${sceneId}`;
   }
@@ -136,6 +188,11 @@ export class LocalFileGameStateRepository
     await this.persist();
   }
 
+  override async loadSessionScene(campaignId: string, sessionId: string) {
+    await this.ensureLoaded();
+    return super.loadSessionScene(campaignId, sessionId);
+  }
+
   override async saveTokenPosition(update: TokenPositionUpdate) {
     await this.ensureLoaded();
     await super.saveTokenPosition(update);
@@ -148,6 +205,28 @@ export class LocalFileGameStateRepository
     await this.persist();
   }
 
+  override async listNamedSnapshots(campaignId: string, sessionId: string) {
+    await this.ensureLoaded();
+    return super.listNamedSnapshots(campaignId, sessionId);
+  }
+
+  override async saveNamedSnapshot(snapshot: NamedSceneSnapshotRecord) {
+    await this.ensureLoaded();
+    await super.saveNamedSnapshot(snapshot);
+    await this.persist();
+  }
+
+  override async loadNamedSnapshot(snapshotId: string) {
+    await this.ensureLoaded();
+    return super.loadNamedSnapshot(snapshotId);
+  }
+
+  override async deleteNamedSnapshot(snapshotId: string) {
+    await this.ensureLoaded();
+    await super.deleteNamedSnapshot(snapshotId);
+    await this.persist();
+  }
+
   private async ensureLoaded() {
     if (this.loaded) {
       return;
@@ -157,10 +236,20 @@ export class LocalFileGameStateRepository
 
     try {
       const raw = await readFile(this.filePath, "utf8");
-      const snapshots = JSON.parse(raw) as SceneSnapshot[];
+      const parsed = JSON.parse(raw) as
+        | SceneSnapshot[]
+        | {
+            version: 2;
+            scenes: SceneSnapshot[];
+            namedSnapshots: NamedSceneSnapshotRecord[];
+          };
+      const snapshots = Array.isArray(parsed) ? parsed : parsed.scenes;
+      const namedSnapshots = Array.isArray(parsed)
+        ? []
+        : parsed.namedSnapshots ?? [];
 
-      if (!Array.isArray(snapshots)) {
-        throw new Error("Local game state must contain an array of snapshots");
+      if (!Array.isArray(snapshots) || !Array.isArray(namedSnapshots)) {
+        throw new Error("Local game state has an invalid structure");
       }
 
       for (const snapshot of snapshots) {
@@ -169,6 +258,12 @@ export class LocalFileGameStateRepository
             this.key(snapshot.campaignId, snapshot.scene.id),
             cloneSnapshot(snapshot),
           );
+        }
+      }
+
+      for (const record of namedSnapshots) {
+        if (record?.id && record?.snapshot?.scene?.id) {
+          this.namedSnapshots.set(record.id, cloneNamedSnapshot(record));
         }
       }
     } catch (error) {
@@ -180,7 +275,15 @@ export class LocalFileGameStateRepository
 
   private async persist() {
     const payload = JSON.stringify(
-      [...this.snapshots.values()].map((snapshot) => cloneSnapshot(snapshot)),
+      {
+        version: 2,
+        scenes: [...this.snapshots.values()].map((snapshot) =>
+          cloneSnapshot(snapshot),
+        ),
+        namedSnapshots: [...this.namedSnapshots.values()].map((snapshot) =>
+          cloneNamedSnapshot(snapshot),
+        ),
+      },
       null,
       2,
     );
@@ -194,6 +297,12 @@ export class LocalFileGameStateRepository
 
     await this.writeQueue;
   }
+}
+
+function cloneNamedSnapshot(
+  record: NamedSceneSnapshotRecord,
+): NamedSceneSnapshotRecord {
+  return { ...record, snapshot: cloneSnapshot(record.snapshot) };
 }
 
 function cloneScene(scene: GameScene): GameScene {

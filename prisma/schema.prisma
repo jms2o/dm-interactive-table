@@ -24,6 +24,12 @@ enum CampaignStatus {
   ARCHIVED
 }
 
+enum SessionPhase {
+  PREPARATION
+  LIVE
+  ENDED
+}
+
 enum SceneVisibility {
   PUBLIC
   DM
@@ -70,6 +76,7 @@ model User {
   promptRuns          PromptRun[]
   auditLogs           AuditLog[]
   tableAccessCodes    TableAccessCode[] @relation("TableAccessCodeCreator")
+  gameSnapshots       GameSnapshot[]    @relation("GameSnapshotCreator")
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 }
@@ -107,6 +114,7 @@ model Campaign {
   promptRuns       PromptRun[]
   auditLogs        AuditLog[]
   tableAccessCodes TableAccessCode[]
+  gameSnapshots    GameSnapshot[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -133,6 +141,7 @@ model GameSession {
   id               String            @id @default(uuid())
   campaignId       String
   title            String
+  phase            SessionPhase      @default(PREPARATION)
   scheduledAt      DateTime?
   startedAt        DateTime?
   endedAt          DateTime?
@@ -142,6 +151,7 @@ model GameSession {
   scenes           Scene[]
   diceRolls        DiceRoll[]
   tableAccessCodes TableAccessCode[]
+  gameSnapshots    GameSnapshot[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -187,6 +197,7 @@ model Scene {
   battleMap     BattleMap       @relation(fields: [battleMapId], references: [id], onDelete: Restrict)
   tokens        GameToken[]
   encounters    Encounter[]
+  gameSnapshots GameSnapshot[]
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
@@ -246,13 +257,17 @@ model PlayerCharacter {
   id          String   @id @default(uuid())
   campaignId  String
   ownerUserId String?
+  playerKey   String?
   name        String
   ancestry    String   @default("")
   className   String   @default("")
   level       Int      @default(1)
   maxHp       Int      @default(1)
   currentHp   Int      @default(1)
+  temporaryHp Int      @default(0)
   armorClass  Int      @default(10)
+  notes       String   @default("")
+  resources   Json?
   rulesData   Json?
   campaign    Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   owner       User?    @relation("CharacterOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
@@ -261,6 +276,26 @@ model PlayerCharacter {
 
   @@index([campaignId])
   @@index([ownerUserId])
+  @@unique([campaignId, playerKey])
+}
+
+model GameSnapshot {
+  id          String       @id @default(uuid())
+  campaignId  String
+  sessionId   String
+  sceneId     String
+  createdById String?
+  name        String
+  payload     Json
+  campaign    Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  session     GameSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  scene       Scene        @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  createdBy   User?        @relation("GameSnapshotCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime     @default(now())
+
+  @@index([campaignId, sessionId, createdAt])
+  @@index([sceneId])
+  @@index([createdById])
 }
 
 model NPC {

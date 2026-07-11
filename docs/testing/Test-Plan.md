@@ -220,3 +220,34 @@ npm run test:recovery
 npm run test:smoke
 npm run test:e2e
 ```
+
+## Session Workflow 2.0.0-alpha.22
+
+### Dominio y persistencia
+
+- Catálogo, sesiones y fases sobreviven la recarga del repositorio local.
+- Solo una sesión puede estar `live` en la instancia.
+- Finalizar libera la siguiente sesión y conserva resúmenes.
+- Hojas de jugador persisten y quedan aisladas por `playerKey`.
+- Undo/redo restaura escena, narrativa y experiencia completas.
+- Los snapshots nombrados sobreviven un reinicio.
+
+### Autorización y realtime
+
+- `POST /auth/context` exige DM con acceso a campaña y sesión válidas.
+- Jugador y display reciben snapshot sin escena durante preparación y cierre.
+- Un jugador no puede tirar dados fuera de una sesión en vivo.
+- `history:*` exige DM, contexto coincidente y `requestId` idempotente.
+- Cambios de fase se emiten a `session:{sessionId}`.
+
+### E2E principal
+
+DM crea cuenta → entra al lobby → abre preparación → genera código → jugador
+edita su hoja en sala de espera → DM inicia → jugador reconecta → DM crea un
+snapshot → DM finaliza → jugador ve el cierre.
+
+Comando dedicado:
+
+```bash
+npm run test:workflow
+```

@@ -1,4 +1,8 @@
 import type { GameScene } from "../../../shared/types/game";
+import type {
+  GameHistoryState,
+  NamedGameSnapshot,
+} from "../../../shared/types/session-workflow";
 import {
   createDefaultSceneExperience,
   type ActiveAssetCue,
@@ -47,8 +51,10 @@ import type {
 import { gameRepository } from "../persistence";
 import type {
   GameStateRepository,
+  NamedSceneSnapshotRecord,
   SceneSnapshot,
 } from "../persistence/game.repository";
+import { cloneSnapshot } from "../persistence/game.repository";
 import {
   assetService,
   DEMO_HERO_TOKEN_ASSET_ID,
@@ -228,9 +234,16 @@ export class GameStateStore {
   constructor(private readonly repository: GameStateRepository) {}
 
   private readonly visionHistoryLimit = 50;
+  private readonly gameHistoryLimit = 50;
+  private readonly namedSnapshotLimit = 30;
   private visionUndoStack: SceneExperienceState["vision"][] = [];
   private visionRedoStack: SceneExperienceState["vision"][] = [];
+  private gameUndoStack: SceneSnapshot[] = [];
+  private gameRedoStack: SceneSnapshot[] = [];
+  private namedSnapshots: NamedGameSnapshot[] = [];
+  private historySuppressed = false;
   private persistenceQueue = Promise.resolve();
+  private contextQueue = Promise.resolve();
 
   private state: RuntimeState = {
     campaignId: DEFAULT_CAMPAIGN_ID,
@@ -239,29 +252,60 @@ export class GameStateStore {
     dmNarrativeText: "",
     updatedAt: new Date().toISOString(),
   };
+  private lastCommittedSnapshot = this.toSnapshot();
 
-  async initialize() {
+  async initialize(
+    campaignId = DEFAULT_CAMPAIGN_ID,
+    sessionId = DEFAULT_SESSION_ID,
+    sessionTitle = "Sesion Demo",
+  ) {
     try {
-      const persisted = await this.repository.loadScene(
-        this.state.campaignId,
-        this.state.scene.id,
-      );
-
-      if (persisted) {
-        this.state = {
-          campaignId: persisted.campaignId,
-          sessionId: persisted.sessionId || this.state.sessionId,
-          scene: withSceneExperience(persisted.scene),
-          dmNarrativeText: persisted.dmNarrativeText,
-          updatedAt: persisted.updatedAt,
-        };
-        return;
-      }
-
-      await this.repository.saveSceneSnapshot(this.toSnapshot());
+      await this.activateContext(campaignId, sessionId, sessionTitle);
     } catch (error) {
       console.error("Game state persistence initialization failed", error);
     }
+  }
+
+  activateContext(
+    campaignId: string,
+    sessionId: string,
+    sessionTitle = "Sesion",
+  ) {
+    const operation = this.contextQueue.then(async () => {
+      await this.flushPersistence();
+      let persisted = await this.repository.loadSessionScene(
+        campaignId,
+        sessionId,
+      );
+
+      if (!persisted && campaignId === DEFAULT_CAMPAIGN_ID) {
+        persisted = await this.repository.loadScene(campaignId, DEFAULT_SCENE_ID);
+      }
+
+      this.state = persisted
+        ? runtimeFromSnapshot(persisted, sessionId)
+        : {
+            campaignId,
+            sessionId,
+            scene: createSceneForContext(campaignId, sessionId, sessionTitle),
+            dmNarrativeText: "",
+            updatedAt: new Date().toISOString(),
+          };
+      this.visionUndoStack = [];
+      this.visionRedoStack = [];
+      this.gameUndoStack = [];
+      this.gameRedoStack = [];
+      this.namedSnapshots = (
+        await this.repository.listNamedSnapshots(campaignId, sessionId)
+      ).map(snapshotMetadata);
+      this.lastCommittedSnapshot = this.toSnapshot();
+
+      if (!persisted) {
+        await this.repository.saveSceneSnapshot(this.toSnapshot());
+      }
+    });
+    this.contextQueue = operation.catch(() => undefined);
+    return operation;
   }
 
   getSnapshot(role: ClientRole): GameStatePayload {
@@ -272,8 +316,83 @@ export class GameStateStore {
       sceneId: this.state.scene.id,
       scene: sceneForRole(this.state.scene, role),
       visionHistory: role === "dm" ? this.getVisionHistory() : undefined,
+      history: role === "dm" ? this.getHistoryState() : undefined,
       updatedAt: this.state.updatedAt,
     };
+  }
+
+  getHistoryState(): GameHistoryState {
+    return {
+      canUndo: this.gameUndoStack.length > 0,
+      canRedo: this.gameRedoStack.length > 0,
+      undoDepth: this.gameUndoStack.length,
+      redoDepth: this.gameRedoStack.length,
+      snapshots: this.namedSnapshots.map((snapshot) => ({ ...snapshot })),
+    };
+  }
+
+  undoHistory() {
+    const previous = this.gameUndoStack.pop();
+    if (!previous) return { ok: false as const, error: "Nothing to undo" };
+    this.gameRedoStack.push(this.toSnapshot());
+    this.restoreRuntimeSnapshot(previous);
+    return { ok: true as const, history: this.getHistoryState() };
+  }
+
+  redoHistory() {
+    const next = this.gameRedoStack.pop();
+    if (!next) return { ok: false as const, error: "Nothing to redo" };
+    this.gameUndoStack.push(this.toSnapshot());
+    this.restoreRuntimeSnapshot(next);
+    return { ok: true as const, history: this.getHistoryState() };
+  }
+
+  async createNamedSnapshot(name: string, createdById?: string) {
+    if (this.namedSnapshots.length >= this.namedSnapshotLimit) {
+      throw new Error("Snapshot limit reached");
+    }
+
+    await this.flushPersistence();
+    const record: NamedSceneSnapshotRecord = {
+      id: crypto.randomUUID(),
+      campaignId: this.state.campaignId,
+      sessionId: this.state.sessionId,
+      sceneId: this.state.scene.id,
+      name: name.trim(),
+      createdAt: new Date().toISOString(),
+      createdById,
+      snapshot: this.toSnapshot(),
+    };
+    await this.repository.saveNamedSnapshot(record);
+    this.namedSnapshots = [snapshotMetadata(record), ...this.namedSnapshots];
+    return this.getHistoryState();
+  }
+
+  async restoreNamedSnapshot(snapshotId: string) {
+    const record = await this.repository.loadNamedSnapshot(snapshotId);
+    if (
+      !record ||
+      record.campaignId !== this.state.campaignId ||
+      record.sessionId !== this.state.sessionId
+    ) {
+      throw new Error("Snapshot not found");
+    }
+
+    this.pushGameUndo(this.toSnapshot());
+    this.gameRedoStack = [];
+    this.restoreRuntimeSnapshot(record.snapshot);
+    return this.getHistoryState();
+  }
+
+  async deleteNamedSnapshot(snapshotId: string) {
+    if (!this.namedSnapshots.some((snapshot) => snapshot.id === snapshotId)) {
+      throw new Error("Snapshot not found");
+    }
+    await this.repository.deleteNamedSnapshot(snapshotId);
+    this.namedSnapshots = this.namedSnapshots.filter(
+      (snapshot) => snapshot.id !== snapshotId,
+    );
+    return this.getHistoryState();
   }
 
   updateFog(command: FogUpdateCommand, updatedBy: string): FogUpdateResult {
@@ -1536,12 +1655,46 @@ export class GameStateStore {
   }
 
   private touch() {
+    if (
+      !this.historySuppressed &&
+      this.lastCommittedSnapshot.campaignId === this.state.campaignId &&
+      this.lastCommittedSnapshot.sessionId === this.state.sessionId
+    ) {
+      this.pushGameUndo(this.lastCommittedSnapshot);
+      this.gameRedoStack = [];
+    }
     this.state.updatedAt = new Date().toISOString();
+    this.lastCommittedSnapshot = this.toSnapshot();
   }
 
   private touchExperience() {
     this.touch();
     this.state.scene.experience.updatedAt = this.state.updatedAt;
+    this.lastCommittedSnapshot = this.toSnapshot();
+  }
+
+  private pushGameUndo(snapshot: SceneSnapshot) {
+    this.gameUndoStack.push(cloneSnapshot(snapshot));
+    if (this.gameUndoStack.length > this.gameHistoryLimit) {
+      this.gameUndoStack.splice(0, this.gameUndoStack.length - this.gameHistoryLimit);
+    }
+  }
+
+  private restoreRuntimeSnapshot(snapshot: SceneSnapshot) {
+    this.historySuppressed = true;
+    const updatedAt = new Date().toISOString();
+    this.state = {
+      ...runtimeFromSnapshot(snapshot, this.state.sessionId),
+      campaignId: this.state.campaignId,
+      sessionId: this.state.sessionId,
+      updatedAt,
+    };
+    this.state.scene.experience.updatedAt = updatedAt;
+    this.lastCommittedSnapshot = this.toSnapshot();
+    this.historySuppressed = false;
+    this.persistSafely(() =>
+      this.repository.saveSceneSnapshot(this.toSnapshot()),
+    );
   }
 
   private toSnapshot(): SceneSnapshot {
@@ -1568,6 +1721,64 @@ export class GameStateStore {
 }
 
 export const gameState = new GameStateStore(gameRepository);
+
+function runtimeFromSnapshot(
+  snapshot: SceneSnapshot,
+  fallbackSessionId: string,
+): RuntimeState {
+  return {
+    campaignId: snapshot.campaignId,
+    sessionId: snapshot.sessionId || fallbackSessionId,
+    scene: withSceneExperience(snapshot.scene),
+    dmNarrativeText: snapshot.dmNarrativeText,
+    updatedAt: snapshot.updatedAt,
+  };
+}
+
+function createSceneForContext(
+  campaignId: string,
+  sessionId: string,
+  sessionTitle: string,
+) {
+  const scene = cloneScene(initialScene);
+  if (
+    campaignId === DEFAULT_CAMPAIGN_ID &&
+    sessionId === DEFAULT_SESSION_ID
+  ) {
+    return scene;
+  }
+
+  const tokenIds = new Map(
+    scene.tokens.map((token) => [token.id, crypto.randomUUID()]),
+  );
+  scene.id = crypto.randomUUID();
+  scene.name = sessionTitle.trim() || "Escena de preparacion";
+  scene.map.id = crypto.randomUUID();
+  scene.tokens = scene.tokens.map((token) => ({
+    ...token,
+    id: tokenIds.get(token.id)!,
+  }));
+  scene.experience.lighting.sources = scene.experience.lighting.sources.map(
+    (source) => ({
+      ...source,
+      tokenId: source.tokenId
+        ? tokenIds.get(source.tokenId) ?? source.tokenId
+        : undefined,
+    }),
+  );
+  return scene;
+}
+
+function snapshotMetadata(record: NamedSceneSnapshotRecord): NamedGameSnapshot {
+  return {
+    id: record.id,
+    campaignId: record.campaignId,
+    sessionId: record.sessionId,
+    sceneId: record.sceneId,
+    name: record.name,
+    createdAt: record.createdAt,
+  };
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));

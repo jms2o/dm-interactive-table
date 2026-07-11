@@ -4,9 +4,9 @@ Motor de campañas de rol con panel privado para el DM, mapa sincronizado para m
 
 ## Versión actual
 
-`2.0.0-alpha.21 - Session Reliability`
+`2.0.0-alpha.22 - Session Workflow`
 
-Esta entrega incorpora autenticación real del DM, códigos temporales para jugadores y display, autorización HTTP/Socket.IO, autosave local o PostgreSQL, recuperación tras reinicio, reconexión con comandos idempotentes, Docker Compose, CI y Playwright.
+Esta entrega añade selector de campañas, lobby con presencia, preparación y partida separadas, inicio/cierre formal de sesiones, hoja persistente de jugador e historial global con undo/redo y snapshots nombrados. Conserva la autenticación, recuperación y operación LAN de Session Reliability.
 
 ## Inicio con Docker
 
@@ -50,7 +50,7 @@ npm run verify
 npm run test:e2e
 ```
 
-`verify` ejecuta build, lint, geometría de mapa/visión/cámara, seguridad, recuperación, validación Prisma y el flujo integrado HTTP/Socket.IO. El E2E requiere Chromium de Playwright (`npx playwright install chromium`).
+`verify` ejecuta build, lint, geometría de mapa/visión/cámara, seguridad, recuperación, workflow de sesiones, validación Prisma y el flujo integrado HTTP/Socket.IO. El E2E requiere Chromium de Playwright (`npx playwright install chromium`).
 
 ## Documentación
 

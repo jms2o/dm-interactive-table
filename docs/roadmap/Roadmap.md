@@ -297,10 +297,20 @@ Estado: completado.
 
 Estado: completado.
 
-### Siguiente versión - Session Workflow
+### 2.0.0-alpha.22 - Session Workflow
 
 - Selector de campaña y lobby.
 - Separación preparación/partida.
 - Inicio y cierre formal de sesión.
 - Hoja funcional de jugador.
 - Historial general undo/redo y snapshots restaurables.
+
+Estado: completado.
+
+### Siguiente versión - Table Device Experience
+
+- Calibración física del mapa y perfiles de display.
+- Wake Lock durante partidas y recuperación al volver a primer plano.
+- Safe areas y controles optimizados para televisión, tablet y teléfono.
+- Diagnóstico de red, latencia y calidad de sincronización por dispositivo.
+- Permisos de movimiento de token vinculados al personaje.

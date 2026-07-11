@@ -24,11 +24,13 @@ erDiagram
   World ||--o{ Campaign : contains
   Campaign ||--o{ GameSession : schedules
   GameSession ||--o{ TableAccessCode : scopes
+  GameSession ||--o{ GameSnapshot : captures
   Campaign ||--o{ PlayerCharacter : has
   Campaign ||--o{ NPC : has
   Campaign ||--o{ Encounter : has
   Campaign ||--o{ JournalEntry : has
   GameSession ||--o{ Scene : uses
+  Scene ||--o{ GameSnapshot : restores
   Scene ||--|| BattleMap : renders
   Scene ||--o{ GameToken : contains
   Encounter ||--o{ Combatant : includes
@@ -95,6 +97,7 @@ Sesión de juego.
 - `id`
 - `campaignId`
 - `title`
+- `phase`: `PREPARATION`, `LIVE`, `ENDED`
 - `scheduledAt`
 - `startedAt`
 - `endedAt`
@@ -174,14 +177,31 @@ Personaje jugador.
 - `id`
 - `campaignId`
 - `ownerUserId`
+- `playerKey`: identidad firmada del participante sin cuenta
 - `name`
 - `ancestry`
 - `className`
 - `level`
 - `maxHp`
 - `currentHp`
+- `temporaryHp`
 - `armorClass`
+- `notes`
+- `resources Json`
 - `rulesData Json`
+
+### GameSnapshot
+
+Punto de restauración nombrado de una escena completa.
+
+- `id`
+- `campaignId`
+- `sessionId`
+- `sceneId`
+- `createdById`
+- `name`
+- `payload Json`: `SceneSnapshot` versionado por contrato de aplicación
+- `createdAt`
 
 ### NPC
 
@@ -297,6 +317,8 @@ Registro de acciones relevantes.
 
 - `CampaignMember(campaignId, userId)`
 - `Scene(campaignId, isActive)`
+- `PlayerCharacter(campaignId, playerKey)` único cuando existe `playerKey`
+- `GameSnapshot(campaignId, sessionId, createdAt)`
 - `GameToken(sceneId)`
 - `Encounter(sceneId, status)`
 - `DiceRoll(campaignId, sessionId, createdAt)`
@@ -305,19 +327,17 @@ Registro de acciones relevantes.
 
 ## Decisiones pendientes
 
-- Autenticación local vs cuentas completas.
 - Storage local vs S3-compatible.
-- Estrategia exacta de snapshots de escena.
 - Separación de `NPC` y `Enemy` o unificación futura como `Actor`.
 - Normalización de reglas por sistema frente a `rulesData Json`.
 
 ## Implementación actual
 
-La primera implementación vive en `prisma/schema.prisma` y usa PostgreSQL como destino formal. La migración inicial está en `prisma/migrations/20260707070000_initial_campaign_engine/migration.sql`.
+La implementación vive en `prisma/schema.prisma` y usa PostgreSQL como destino formal. Session Workflow se incorpora en `prisma/migrations/20260710183000_session_workflow/migration.sql`.
 
 El backend usa una capa de repositorio:
 
-- Sin `DATABASE_URL`: repositorio en memoria para desarrollo local.
+- Sin `DATABASE_URL`: catálogos, personajes y snapshots JSON con escritura atómica.
 - Con `DATABASE_URL`: repositorio Prisma con adapter PostgreSQL.
 
 Esta decisión permite seguir desarrollando el flujo realtime sin bloquear el proyecto por infraestructura local, mientras el contrato relacional ya queda definido.

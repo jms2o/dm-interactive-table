@@ -1,5 +1,6 @@
 import type { GameScene } from "./game";
 import type { VisionHistoryState } from "./table-experience";
+import type { GameHistoryState } from "./session-workflow";
 
 export type ClientRole = "dm" | "display" | "player";
 
@@ -22,6 +23,7 @@ export interface GameStatePayload {
   sceneId?: string;
   scene?: PublicSceneState;
   visionHistory?: VisionHistoryState;
+  history?: GameHistoryState;
   updatedAt: string;
 }
 

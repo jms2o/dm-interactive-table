@@ -77,8 +77,10 @@ export function authorizeApiRequest(
 
   if (
     principal.role === "player" &&
-    request.method === "POST" &&
-    /^\/api\/campaigns\/[^/]+\/dice\/roll$/.test(path)
+    ((request.method === "POST" &&
+      /^\/api\/campaigns\/[^/]+\/dice\/roll$/.test(path)) ||
+      (request.method === "PATCH" &&
+        /^\/api\/campaigns\/[^/]+\/workflow\/character-sheet$/.test(path)))
   ) {
     next();
     return;

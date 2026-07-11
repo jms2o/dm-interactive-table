@@ -202,6 +202,26 @@ export class AuthService {
     };
   }
 
+  scopeDmSession(
+    principal: AuthPrincipal,
+    campaignId: string,
+    sessionId: string,
+  ): AuthSessionResponse {
+    assertDmCampaign(principal, campaignId);
+    return this.signSession(
+      {
+        id: principal.id,
+        displayName: principal.displayName,
+        role: "dm",
+        campaignId,
+        sessionId,
+        isAdmin: principal.isAdmin,
+      },
+      "dm",
+      env.sessionTtlHours * 60 * 60,
+    );
+  }
+
   onTableAccessRevoked(listener: (campaignId: string) => void) {
     this.tableRevocationListeners.add(listener);
     return () => this.tableRevocationListeners.delete(listener);
@@ -257,6 +277,7 @@ export class AuthService {
   async getTableAccessStatus(
     principal: AuthPrincipal,
     campaignId: string,
+    sessionId?: string,
   ): Promise<TableAccessStatus> {
     assertDmCampaign(principal, campaignId);
     const record = await this.repository.findActiveTableAccess(
@@ -264,7 +285,7 @@ export class AuthService {
       new Date(),
     );
 
-    if (!record) {
+    if (!record || (sessionId && record.sessionId !== sessionId)) {
       return { active: false, campaignId };
     }
 
@@ -330,7 +351,7 @@ export class AuthService {
 
     return this.signSession(
       {
-        id: `guest:${randomUUID()}`,
+        id: participantSubject(record.campaignId, input.role, displayName),
         displayName,
         role: input.role,
         campaignId: record.campaignId,
@@ -438,6 +459,18 @@ function hashTableCode(code: string) {
   return createHmac("sha256", env.authSecret)
     .update(normalizeTableCode(code))
     .digest("hex");
+}
+
+function participantSubject(
+  campaignId: string,
+  role: "player" | "display",
+  displayName: string,
+) {
+  const digest = createHmac("sha256", env.authSecret)
+    .update(`${campaignId}:${role}:${displayName.trim().toLowerCase()}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `guest:${digest}`;
 }
 
 function clamp(value: number, min: number, max: number) {

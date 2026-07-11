@@ -18,6 +18,7 @@ Este documento define la frontera de confianza implementada en `2.0.0-alpha.21`.
 - El DM genera un código de seis caracteres con expiración.
 - En PostgreSQL solo se conserva un HMAC del código; en modo local se aplica el mismo criterio.
 - El canje fija `role`, `campaignId` y `sessionId` dentro de un token temporal.
+- El `sub` de jugador deriva por HMAC de campaña, rol y nombre normalizado para recuperar su hoja al volver a entrar sin exponer esos datos.
 - Regenerar revoca el código anterior sin interrumpir clientes ya conectados.
 - Cerrar el acceso marca todas las concesiones vigentes, expulsa sockets de jugador/display e impide su reconexión.
 
@@ -29,6 +30,7 @@ Las rutas `/api/health`, `/api/auth/status`, `/api/auth/login`, `/api/auth/regis
 - Player: lectura de su campaña y tiradas de dados.
 - Display: lectura de su campaña.
 - Cualquier campaña distinta a la incluida en el token se rechaza con `403`.
+- Player puede actualizar únicamente `/workflow/character-sheet` de su propia campaña.
 
 Los endpoints de credenciales y código tienen rate limit. Express limita JSON a `JSON_LIMIT` y Helmet añade cabeceras defensivas.
 
@@ -37,6 +39,17 @@ Los endpoints de credenciales y código tienen rate limit. Express limita JSON a
 El middleware del handshake valida `auth.token`; `role` y `campaignId` enviados por el cliente solo pueden coincidir con los claims firmados. Cada comando vuelve a comprobar rol y campaña antes de llegar al motor de dominio.
 
 Los comandos con `requestId` se cachean durante cinco minutos por identidad y evento. Un reintento devuelve el mismo acknowledgment sin aplicar la mutación dos veces. Cada socket limita frecuencia y payload a 64 KiB.
+
+## Contexto de sesión
+
+Desde `2.0.0-alpha.22`, `POST /api/auth/context` valida primero que la campaña y
+la sesión existen y que el principal puede dirigirlas. Después activa el estado
+correspondiente y reemite el JWT DM con ese contexto exacto. Una sesión en vivo
+debe finalizar antes de activar otra mesa.
+
+Jugador y display no reciben `scene` durante `preparation` o `ended`, aunque
+conserven un token válido. Los eventos `history:*` requieren DM y coincidencia de
+campaña y sesión.
 
 ## Datos privados
 

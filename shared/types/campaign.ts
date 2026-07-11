@@ -24,6 +24,7 @@ export interface GameSessionSummary {
   id: string;
   campaignId: string;
   title: string;
+  phase: import("./session-workflow").SessionPhase;
   scheduledAt?: string;
   startedAt?: string;
   endedAt?: string;
@@ -51,4 +52,3 @@ export interface CreateGameSessionRequest {
   title: string;
   scheduledAt?: string;
 }
-

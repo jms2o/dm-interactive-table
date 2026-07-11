@@ -46,6 +46,10 @@ import type {
   TokenMoveCommand,
   TokenMovedEvent,
 } from '../../../../shared/types/realtime'
+import type {
+  GameHistoryState,
+  HistoryActionAck,
+} from '../../../../shared/types/session-workflow'
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL ?? window.location.origin
 
@@ -72,6 +76,20 @@ type RealtimeState = {
   updateLighting: (command: LightUpdateCommand) => void
   updateVision: (command: VisionUpdateCommand) => void
   visionHistory: VisionHistoryState
+  history: GameHistoryState
+  undoHistory: () => void
+  redoHistory: () => void
+  createSnapshot: (name: string) => void
+  restoreSnapshot: (snapshotId: string) => void
+  deleteSnapshot: (snapshotId: string) => void
+}
+
+const EMPTY_HISTORY: GameHistoryState = {
+  canUndo: false,
+  canRedo: false,
+  undoDepth: 0,
+  redoDepth: 0,
+  snapshots: [],
 }
 
 export function useRealtimeGame(
@@ -94,6 +112,7 @@ export function useRealtimeGame(
     canUndo: false,
     canRedo: false,
   })
+  const [history, setHistory] = useState<GameHistoryState>(EMPTY_HISTORY)
   const [lastEvent, setLastEvent] = useState('')
   const [reconnectAttempt, setReconnectAttempt] = useState(0)
 
@@ -152,6 +171,7 @@ export function useRealtimeGame(
       setState(payload)
       cacheState(role, campaignId, payload)
       if (payload.visionHistory) setVisionHistory(payload.visionHistory)
+      if (payload.history) setHistory(payload.history)
       setLastEvent('game:state')
     })
 
@@ -225,6 +245,11 @@ export function useRealtimeGame(
 
     socket.on('audio:preset:managed', (payload: AudioPresetManagedEvent) => {
       setLastEvent(`audio:preset:managed ${payload.action}`)
+    })
+
+    socket.on('history:updated', (payload: GameHistoryState) => {
+      setHistory(payload)
+      setLastEvent('history:updated')
     })
 
     return () => {
@@ -456,6 +481,36 @@ export function useRealtimeGame(
     })
   }
 
+  function sendHistoryCommand(
+    eventName:
+      | 'history:undo'
+      | 'history:redo'
+      | 'history:snapshot:create'
+      | 'history:snapshot:restore'
+      | 'history:snapshot:delete',
+    extra: Record<string, string> = {},
+  ) {
+    socketRef.current?.emit(
+      eventName,
+      {
+        version: 1,
+        campaignId,
+        sessionId,
+        requestId: crypto.randomUUID(),
+        ...extra,
+      },
+      (ack: HistoryActionAck) => {
+        if (!ack.ok) {
+          setLastError(ack.error ?? 'No se pudo actualizar el historial')
+          return
+        }
+        if (ack.history) setHistory(ack.history)
+        setLastError('')
+        setLastEvent(eventName)
+      },
+    )
+  }
+
   return {
     activeEncounter,
     advanceTurn,
@@ -463,12 +518,18 @@ export function useRealtimeGame(
     connected,
     connectionLabel,
     cueAsset,
+    createSnapshot: (name) =>
+      sendHistoryCommand('history:snapshot:create', { name }),
+    deleteSnapshot: (snapshotId) =>
+      sendHistoryCommand('history:snapshot:delete', { snapshotId }),
+    history,
     lastError,
     lastEvent,
     lastRoll,
     manageAudioPreset,
     moveToken,
     requestGameState,
+    redoHistory: () => sendHistoryCommand('history:redo'),
     rollDice,
     saveAudioPreset,
     sendNarrative,
@@ -478,6 +539,9 @@ export function useRealtimeGame(
     updateFog,
     updateLighting,
     updateVision,
+    restoreSnapshot: (snapshotId) =>
+      sendHistoryCommand('history:snapshot:restore', { snapshotId }),
+    undoHistory: () => sendHistoryCommand('history:undo'),
     visionHistory,
   }
 }
