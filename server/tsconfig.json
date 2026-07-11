@@ -10,5 +10,8 @@
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "../shared/**/*.ts"],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules"],
+  "ts-node": {
+    "files": true
+  }
 }
