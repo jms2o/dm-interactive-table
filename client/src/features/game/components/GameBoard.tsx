@@ -6,7 +6,16 @@ import {
   type CSSProperties,
 } from 'react'
 import { Focus, Hand, Home, ZoomIn, ZoomOut } from 'lucide-react'
-import { Circle, Group, Layer, Line, Rect, Stage, Text } from 'react-konva'
+import {
+  Circle,
+  Group,
+  Image as KonvaImage,
+  Layer,
+  Line,
+  Rect,
+  Stage,
+  Text,
+} from 'react-konva'
 import type Konva from 'konva'
 import type { GameScene } from '../../../../../shared/types/game'
 import type { ClientRole } from '../../../../../shared/types/realtime'
@@ -29,6 +38,7 @@ import {
   type MapLayerSetting,
 } from '../map-layers'
 import { calibratedBoardWidth } from '../../device/table-device'
+import demoMapImageUrl from '../../../assets/maps/demo-camp.png'
 
 type GameBoardProps = {
   canMoveTokens: boolean
@@ -39,7 +49,13 @@ type GameBoardProps = {
   selectedOccluderId?: string
   selectedOccluderIds?: string[]
   pendingVisionPoint?: { x: number; y: number } | null
+  selectedTokenId?: string | null
+  focusedTokenId?: string | null
+  focusRequest?: number
+  interactionMode?: 'select' | 'pan'
   onTokenMove: (tokenId: string, x: number, y: number) => void
+  onTokenSelect?: (tokenId: string | null) => void
+  onInteractionModeChange?: (mode: 'select' | 'pan') => void
   onVisionCanvasPoint?: (x: number, y: number) => void
   onSelectOccluder?: (occluderId: string, additive?: boolean) => void
   onOccluderChange?: (occluder: VisionOccluder) => void
@@ -67,7 +83,13 @@ export function GameBoard({
   selectedOccluderId,
   selectedOccluderIds = [],
   pendingVisionPoint,
+  selectedTokenId: controlledSelectedTokenId,
+  focusedTokenId,
+  focusRequest = 0,
+  interactionMode,
   onTokenMove,
+  onTokenSelect,
+  onInteractionModeChange,
   onVisionCanvasPoint,
   onSelectOccluder,
   onOccluderChange,
@@ -76,14 +98,46 @@ export function GameBoard({
   devicePreferences,
 }: GameBoardProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null)
+  const [internalSelectedTokenId, setInternalSelectedTokenId] = useState<
+    string | null
+  >(null)
+  const [mapImage, setMapImage] = useState<HTMLImageElement | null>(null)
   const [camera, setCamera] = useState({ x: 0, y: 0, zoom: 1 })
-  const [panEnabled, setPanEnabled] = useState(false)
+  const [internalPanEnabled, setInternalPanEnabled] = useState(false)
   const layerRefs = useRef<Partial<Record<MapLayerId, Konva.Layer | null>>>({})
   const layerById = useMemo(
     () => new Map(mapLayers.map((layer) => [layer.id, layer])),
     [mapLayers],
   )
+  const selectedTokenId =
+    controlledSelectedTokenId === undefined
+      ? internalSelectedTokenId
+      : controlledSelectedTokenId
+  const panEnabled = interactionMode
+    ? interactionMode === 'pan'
+    : internalPanEnabled
+  const resolvedMapImageUrl =
+    scene.map.id === 'demo-map' ||
+    scene.map.imageUrl === '/assets/maps/demo-camp.png'
+      ? demoMapImageUrl
+      : scene.map.imageUrl
+
+  useEffect(() => {
+    let cancelled = false
+    const image = new window.Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => {
+      if (!cancelled) setMapImage(image)
+    }
+    image.onerror = () => {
+      if (!cancelled) setMapImage(null)
+    }
+    image.src = resolvedMapImageUrl
+
+    return () => {
+      cancelled = true
+    }
+  }, [resolvedMapImageUrl])
 
   useEffect(() => {
     for (const [index, setting] of [...mapLayers]
@@ -158,6 +212,25 @@ export function GameBoard({
     [scene.tokens],
   )
 
+  useEffect(() => {
+    if (!focusedTokenId || focusRequest === 0) return
+    const token = tokenById.get(focusedTokenId)
+    if (!token) return
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      setCamera((current) =>
+        centerCameraOnMapPoint({
+          camera: current,
+          mapPoint: { x: token.x, y: token.y },
+          baseScale: scale,
+          viewportWidth: BOARD_WIDTH,
+          viewportHeight: BOARD_HEIGHT,
+        }),
+      )
+    })
+    return () => window.cancelAnimationFrame(animationFrame)
+  }, [focusRequest, focusedTokenId, scale, tokenById])
+
   function toStagePosition(token: GameToken) {
     return {
       x: token.x * scale,
@@ -194,6 +267,10 @@ export function GameBoard({
   }
 
   function handleStagePoint(event: Konva.KonvaEventObject<MouseEvent | TouchEvent>) {
+    if (event.target === event.target.getStage() && visionEditMode === 'select') {
+      selectToken(null)
+    }
+
     if (
       !canEditVision ||
       panEnabled ||
@@ -209,6 +286,17 @@ export function GameBoard({
 
     const mapPoint = screenToMap(point, camera, scale)
     onVisionCanvasPoint?.(Math.round(mapPoint.x), Math.round(mapPoint.y))
+  }
+
+  function selectToken(tokenId: string | null) {
+    setInternalSelectedTokenId(tokenId)
+    onTokenSelect?.(tokenId)
+  }
+
+  function togglePan() {
+    const next = !panEnabled
+    if (interactionMode === undefined) setInternalPanEnabled(next)
+    onInteractionModeChange?.(next ? 'pan' : 'select')
   }
 
   function setZoomAtPoint(nextZoom: number, point = { x: BOARD_WIDTH / 2, y: BOARD_HEIGHT / 2 }) {
@@ -406,7 +494,7 @@ export function GameBoard({
             title="Desplazar mapa"
             aria-label="Desplazar mapa"
             aria-pressed={panEnabled}
-            onClick={() => setPanEnabled((enabled) => !enabled)}
+            onClick={togglePan}
           >
             <Hand size={17} />
           </button>
@@ -467,43 +555,39 @@ export function GameBoard({
           listening={false}
           visible={layerVisible('map')}
         >
-          <Rect
-            x={0}
-            y={0}
-            width={BOARD_WIDTH}
-            height={BOARD_HEIGHT}
-            fillLinearGradientStartPoint={{ x: 0, y: 0 }}
-            fillLinearGradientEndPoint={{ x: BOARD_WIDTH, y: BOARD_HEIGHT }}
-            fillLinearGradientColorStops={[
-              0,
-              '#1b2430',
-              0.45,
-              '#26333b',
-              1,
-              '#111827',
-            ]}
-          />
-          <Rect
-            x={34}
-            y={42}
-            width={310}
-            height={180}
-            fill="#334155"
-            opacity={0.32}
-            cornerRadius={12}
-            rotation={-5}
-          />
-          <Rect
-            x={742}
-            y={116}
-            width={260}
-            height={150}
-            fill="#475569"
-            opacity={0.26}
-            cornerRadius={14}
-            rotation={8}
-          />
-          <Circle x={520} y={390} radius={118} fill="#0f766e" opacity={0.18} />
+          <Rect x={0} y={0} width={BOARD_WIDTH} height={BOARD_HEIGHT} fill="#111713" />
+          {mapImage ? (
+            <KonvaImage
+              image={mapImage}
+              x={0}
+              y={0}
+              width={BOARD_WIDTH}
+              height={BOARD_HEIGHT}
+              listening={false}
+            />
+          ) : (
+            <>
+              <Rect
+                x={34}
+                y={42}
+                width={310}
+                height={180}
+                fill="#27332d"
+                opacity={0.7}
+                cornerRadius={8}
+              />
+              <Rect
+                x={742}
+                y={116}
+                width={260}
+                height={150}
+                fill="#343b35"
+                opacity={0.68}
+                cornerRadius={8}
+              />
+              <Circle x={520} y={390} radius={118} fill="#5d4a2d" opacity={0.28} />
+            </>
+          )}
         </Layer>
 
         <Layer
@@ -541,9 +625,10 @@ export function GameBoard({
                 x={position.x}
                 y={position.y}
                 draggable={canMoveTokens && !panEnabled && !layerLocked('tokens')}
-                onClick={() => setSelectedTokenId(token.id)}
-                onTap={() => setSelectedTokenId(token.id)}
+                onClick={() => selectToken(token.id)}
+                onTap={() => selectToken(token.id)}
                 onDragEnd={(event) => handleDragEnd(token, event)}
+                opacity={token.visible ? 1 : 0.58}
               >
                 <Circle
                   radius={position.radius + (selected ? 8 : 4)}
@@ -555,6 +640,7 @@ export function GameBoard({
                   fill={token.color}
                   stroke="#f8fafc"
                   strokeWidth={3}
+                  dash={token.visible ? undefined : [7, 5]}
                 />
                 <Text
                   text={token.name.slice(0, 2).toUpperCase()}
@@ -886,12 +972,29 @@ export function GameBoard({
           onTouchStart={handleMinimapPoint}
         >
           <Layer listening={false}>
+            {mapImage ? (
+              <KonvaImage
+                image={mapImage}
+                x={minimapOffset.x}
+                y={minimapOffset.y}
+                width={scene.map.width * minimapScale}
+                height={scene.map.height * minimapScale}
+                opacity={0.78}
+              />
+            ) : (
+              <Rect
+                x={minimapOffset.x}
+                y={minimapOffset.y}
+                width={scene.map.width * minimapScale}
+                height={scene.map.height * minimapScale}
+                fill="#111827"
+              />
+            )}
             <Rect
               x={minimapOffset.x}
               y={minimapOffset.y}
               width={scene.map.width * minimapScale}
               height={scene.map.height * minimapScale}
-              fill="#111827"
               stroke="#64748b"
               strokeWidth={1}
             />

@@ -289,3 +289,28 @@ npm run test:performance
 npm run test:assets
 npm run verify
 ```
+
+## DM Command Center 2.0.0-alpha.24
+
+### Cobertura de interfaz
+
+- El shell DM contiene barra superior, navegación, mapa, panel contextual, timeline y status bar.
+- El mapa demo carga una imagen real y mantiene sus capas Konva independientes.
+- Seleccionar un personaje abre `TokenInspector` sin desmontar el mapa.
+- Las acciones sin backend permanecen deshabilitadas y explican su estado.
+- Las herramientas históricas siguen disponibles bajo `Herramientas avanzadas`.
+- El panel contextual se presenta como drawer a 1120 px o menos.
+- Los modales quedan por encima del drawer y de la topbar.
+
+### Automatización
+
+```bash
+npm run test:command-center
+npm run lint --workspace client
+npm run build --workspace client
+npm run test:e2e
+npm run verify
+```
+
+El E2E captura el Command Center y conserva la prueba multicliente de DM,
+display Full HD y jugador móvil con reconexión, snapshot y backup.

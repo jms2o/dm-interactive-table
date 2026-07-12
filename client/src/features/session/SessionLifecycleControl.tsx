@@ -42,6 +42,14 @@ export function SessionLifecycleControl({
 
   async function transition(action: 'start' | 'end' | 'reopen') {
     if (!sessionId) return
+    if (
+      action === 'end' &&
+      !window.confirm(
+        '¿Finalizar la sesión? Los códigos de acceso se revocarán y los jugadores pasarán a la pantalla de cierre.',
+      )
+    ) {
+      return
+    }
     setBusy(true)
     setError('')
     try {

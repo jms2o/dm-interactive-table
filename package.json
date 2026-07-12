@@ -1,6 +1,6 @@
 {
   "name": "dm-interactive-table",
-  "version": "2.0.0-alpha.23",
+  "version": "2.0.0-alpha.24",
   "private": true,
   "workspaces": [
     "client",
@@ -21,12 +21,13 @@
     "test:workflow": "node --test scripts/session-workflow.test.js",
     "test:assets": "node --test scripts/asset-policy.test.js",
     "test:device": "node scripts/table-device-test.mjs",
+    "test:command-center": "node --test scripts/dm-command-center.test.mjs",
     "test:performance": "node scripts/table-performance-test.mjs",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:run": "playwright test",
     "docs:validate": "node scripts/validate-docs.mjs",
     "release:check": "node scripts/release-check.mjs",
-    "verify:core": "npm run build && npm run lint --workspace client && npm run docs:validate && npm run release:check && npm run test:vision && npm run test:camera && npm run test:layers && npm run test:device && npm run test:performance && npm run test:assets && npm run test:security && npm run test:recovery && npm run test:workflow && npm run prisma:validate --workspace server && npm run test:smoke",
+    "verify:core": "npm run build && npm run lint --workspace client && npm run docs:validate && npm run release:check && npm run test:vision && npm run test:camera && npm run test:layers && npm run test:device && npm run test:command-center && npm run test:performance && npm run test:assets && npm run test:security && npm run test:recovery && npm run test:workflow && npm run prisma:validate --workspace server && npm run test:smoke",
     "verify": "npm run verify:core && npm run test:e2e:run",
     "install:all": "npm install",
     "setup": "node scripts/setup.mjs"

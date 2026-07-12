@@ -36,3 +36,4 @@ Esta carpeta registra los briefs de implementaci√≥n que conectan la documentaci√
 - [2.0.0-alpha.21 - Session Reliability](phase-2.0-session-reliability.md)
 - [2.0.0-alpha.22 - Session Workflow](phase-2.0-session-workflow.md)
 - [2.0.0-alpha.23 - Table Device Experience](phase-2.0-table-device-experience.md)
+- [2.0.0-alpha.24 - DM Command Center](phase-2.0-dm-command-center.md)

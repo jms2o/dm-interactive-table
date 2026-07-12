@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: DM Interactive Table API
-  version: 2.0.0-alpha.23
+  version: 2.0.0-alpha.24
   description: API HTTP para sesiones, campañas, escenas, mapas, combate, dados e IA.
 servers:
   - url: http://localhost:4000/api
@@ -1312,7 +1312,7 @@ components:
           type: string
         appVersion:
           type: string
-          example: 2.0.0-alpha.23
+          example: 2.0.0-alpha.24
         exportedAt:
           type: string
           format: date-time

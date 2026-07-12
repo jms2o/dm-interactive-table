@@ -1,7 +1,15 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { LogOut } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import type { AuthPrincipal } from '../../../../shared/types/auth'
+import { APP_VERSION } from '../../../../shared/version'
 import type {
   AIApproveResponse,
   AIGenerateResponse,
@@ -62,11 +70,31 @@ import { useRealtimeGame } from './useRealtimeGame'
 import { TableAccessControl } from '../auth/TableAccessControl'
 import { authHeaders } from '../auth/session-storage'
 import { CharacterSheetPanel } from '../session/CharacterSheetPanel'
-import { HistoryControls } from '../session/HistoryControls'
 import { SessionLifecycleControl } from '../session/SessionLifecycleControl'
 import { TableDeviceControl } from '../device/TableDeviceControl'
 import { useTableDeviceExperience } from '../device/useTableDeviceExperience'
 import { BackupRestoreControl } from '../backup/BackupRestoreControl'
+import { DmCommandCenter } from './components/command-center/DmCommandCenter'
+import { DmContextPanel, DmAdvancedTools } from './components/command-center/DmContextPanel'
+import { DmMapViewport } from './components/command-center/DmMapViewport'
+import { DmShortcutHelp } from './components/command-center/DmShortcutHelp'
+import { DmSideNav } from './components/command-center/DmSideNav'
+import { DmSystemStatusBar } from './components/command-center/DmSystemStatusBar'
+import { DmTimelineBar } from './components/command-center/DmTimelineBar'
+import { DmTopStatusBar } from './components/command-center/DmTopStatusBar'
+import { QuickActionsPanel } from './components/command-center/QuickActionsPanel'
+import { TokenInspector } from './components/token/TokenInspector'
+import { CharactersPanel } from './components/characters/CharactersPanel'
+import { NpcPanel } from './components/npc/NpcPanel'
+import { CombatPanel } from './components/combat/CombatPanel'
+import { DmNotesPanel } from './components/notes/DmNotesPanel'
+import { AssetsPanel } from './components/assets/AssetsPanel'
+import { DisplayPanel } from './components/display/DisplayPanel'
+import { SystemPanel } from './components/system/SystemPanel'
+import { useDmWorkspace } from './hooks/useDmWorkspace'
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import type { DmMapTool, DmSection } from './types/dm-ui.types'
+import demoMapImageUrl from '../../assets/maps/demo-camp.png'
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 const API_ORIGIN = API_URL.replace(/\/api\/?$/, '')
@@ -145,7 +173,28 @@ export function GameWorkspace({
     principal.sessionId,
     onLogout,
   )
+  const isDm = role === 'dm'
+  const isPlayer = role === 'player'
   const device = useTableDeviceExperience(role, accessToken, connected)
+  const dmWorkspace = useDmWorkspace(
+    principal.campaignId,
+    principal.sessionId,
+    isDm,
+  )
+  const [activeDmSection, setActiveDmSection] = useState<DmSection>('map')
+  const [dmMapTool, setDmMapTool] = useState<DmMapTool>('select')
+  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null)
+  const [focusedTokenId, setFocusedTokenId] = useState<string | null>(null)
+  const [focusRequest, setFocusRequest] = useState(0)
+  const [dmContextOpen, setDmContextOpen] = useState(false)
+  const [dmNavCollapsed, setDmNavCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('dit:dm-nav-collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false)
   const [draftNarrative, setDraftNarrative] = useState('')
   const [diceFormula, setDiceFormula] = useState('d20')
   const [rollVisibility, setRollVisibility] =
@@ -245,8 +294,6 @@ export function GameWorkspace({
     (asset): asset is AssetLibraryItem & { type: AssetCueType } =>
       asset.type === 'music' || asset.type === 'sound' || asset.type === 'effect',
   )
-  const isDm = role === 'dm'
-  const isPlayer = role === 'player'
   const displayTitle = isDm
     ? 'Panel del DM'
     : isPlayer
@@ -254,6 +301,11 @@ export function GameWorkspace({
       : 'Pantalla pública'
   const activeCombatant = activeEncounter?.combatants.find(
     (combatant) => combatant.id === activeEncounter.activeCombatantId,
+  )
+  const selectedToken =
+    scene?.tokens.find((token) => token.id === selectedTokenId) ?? null
+  const selectedCombatant = activeEncounter?.combatants.find(
+    (combatant) => combatant.tokenId === selectedTokenId,
   )
   const activeCue = experience?.ambience.activeCue
   const lighting = experience?.lighting
@@ -301,6 +353,15 @@ export function GameWorkspace({
     () => draftNarrative || scene?.narrativeText || '',
     [draftNarrative, scene?.narrativeText],
   )
+
+  useEffect(() => {
+    if (!isDm) return
+    try {
+      localStorage.setItem('dit:dm-nav-collapsed', String(dmNavCollapsed))
+    } catch {
+      // The navigation remains usable when browser storage is unavailable.
+    }
+  }, [dmNavCollapsed, isDm])
 
   useEffect(() => {
     let active = true
@@ -1404,6 +1465,115 @@ export function GameWorkspace({
     URL.revokeObjectURL(url)
   }
 
+  function openDmSection(section: DmSection) {
+    setActiveDmSection(section)
+    setDmContextOpen(true)
+  }
+
+  function handleDmTokenSelect(tokenId: string | null) {
+    setSelectedTokenId(tokenId)
+    if (tokenId) {
+      setActiveDmSection('map')
+      setDmContextOpen(true)
+    }
+  }
+
+  function handleCenterToken(tokenId: string | null) {
+    if (!tokenId) return
+    setSelectedTokenId(tokenId)
+    setFocusedTokenId(tokenId)
+    setFocusRequest((current) => current + 1)
+  }
+
+  function handleDmMapToolChange(tool: DmMapTool) {
+    setDmMapTool(tool)
+    if (tool === 'draw') {
+      handleVisionEditMode('draw-wall')
+      return
+    }
+    if (visionEditMode !== 'select') {
+      handleVisionEditMode('select')
+    }
+    if (tool === 'layers') {
+      openDmSection('map')
+    }
+  }
+
+  function handleToggleFog() {
+    if (!state?.campaignId || !state.sceneId) return
+    const nextEnabled = !(experience?.fogOfWar.enabled ?? fogEnabled)
+    updateFog({
+      version: 1,
+      campaignId: state.campaignId,
+      sceneId: state.sceneId,
+      enabled: nextEnabled,
+      opacity: Number.parseFloat(fogOpacity),
+      requestId: crypto.randomUUID(),
+    })
+    setFogEnabled(nextEnabled)
+    setTableStatus(nextEnabled ? 'Niebla activada' : 'Niebla desactivada')
+  }
+
+  function handleShortcutSnapshot() {
+    createSnapshot(
+      `Snapshot ${new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`,
+    )
+  }
+
+  function clearDmSelection() {
+    setSelectedTokenId(null)
+    setSelectedOccluderId('')
+    setSelectedOccluderIds([])
+    setPendingVisionPoint(null)
+    setDmMapTool('select')
+    setVisionEditMode('select')
+  }
+
+  useKeyboardShortcuts({
+    enabled: isDm,
+    setSection: openDmSection,
+    setMapTool: handleDmMapToolChange,
+    toggleFog: handleToggleFog,
+    undo: undoHistory,
+    redo: redoHistory,
+    createSnapshot: handleShortcutSnapshot,
+    clearSelection: clearDmSelection,
+    showHelp: () => setShortcutHelpOpen(true),
+  })
+
+  const board = scene ? (
+    <Suspense fallback={<div className="empty-stage">Cargando mapa...</div>}>
+      <GameBoard
+        canMoveTokens={isDm}
+        canEditVision={isDm}
+        role={role}
+        scene={scene}
+        devicePreferences={device.preferences}
+        mapLayers={mapLayers}
+        visionEditMode={visionEditMode}
+        selectedOccluderId={selectedOccluderId}
+        selectedOccluderIds={selectedOccluderIds}
+        pendingVisionPoint={pendingVisionPoint}
+        selectedTokenId={selectedTokenId}
+        focusedTokenId={focusedTokenId}
+        focusRequest={focusRequest}
+        interactionMode={dmMapTool === 'pan' ? 'pan' : 'select'}
+        onTokenMove={handleTokenMove}
+        onTokenSelect={handleDmTokenSelect}
+        onInteractionModeChange={(mode) => setDmMapTool(mode)}
+        onVisionCanvasPoint={handleVisionCanvasPoint}
+        onSelectOccluder={handleSelectOccluder}
+        onOccluderChange={handleBoardOccluderChange}
+        onDeleteOccluder={removeOccluderById}
+      />
+    </Suspense>
+  ) : (
+    <div className="empty-stage">Conectando con la escena...</div>
+  )
+
   return (
     <main
       className={`app-shell app-shell--${role} app-shell--${
@@ -1417,54 +1587,213 @@ export function GameWorkspace({
       }`}
       style={device.shellStyle}
     >
-      <header className="topbar">
-        <div>
-          <span className="eyebrow">DM Interactive Table</span>
-          <h1>{displayTitle}</h1>
-        </div>
-        <div className="topbar__actions">
-          <nav className="topbar__nav" aria-label="Vistas principales">
-            <NavLink to="/dm">DM</NavLink>
-            <NavLink to="/display">Display</NavLink>
-            <NavLink to="/player">Jugador</NavLink>
-          </nav>
-          {isDm ? (
-            <SessionLifecycleControl
-              campaignId={state?.campaignId ?? principal.campaignId}
-              sessionId={state?.sessionId ?? principal.sessionId}
-              onReturnToLobby={onReturnToLobby}
-            />
-          ) : null}
-          {isDm ? (
-            <TableAccessControl
-              campaignId={state?.campaignId ?? principal.campaignId}
-              sessionId={state?.sessionId ?? principal.sessionId}
-            />
-          ) : null}
-          {isDm ? (
-            <BackupRestoreControl
-              campaignId={state?.campaignId ?? principal.campaignId}
-            />
-          ) : null}
-          <TableDeviceControl
-            device={device}
-            socketLatencyMs={socketLatencyMs}
-            socketRecovered={socketRecovered}
+      <DmCommandCenter
+        enabled={isDm}
+        collapsed={dmNavCollapsed}
+        contextOpen={dmContextOpen}
+      >
+        {isDm ? (
+          <DmTopStatusBar
+            campaignName={
+              dmWorkspace.campaign?.name ??
+              state?.campaignId ??
+              principal.campaignId
+            }
+            sessionTitle={dmWorkspace.session?.title ?? scene?.name ?? 'Mesa activa'}
+            sessionId={state?.sessionId ?? principal.sessionId}
+            phase={dmWorkspace.session?.phase}
+            playerCount={dmWorkspace.players.length}
+            displayConnected={dmWorkspace.displays.length > 0}
+            connected={connected}
+            latencyMs={socketLatencyMs ?? device.httpLatencyMs}
+            fps={device.fps}
+            lifecycleControl={
+              <SessionLifecycleControl
+                campaignId={state?.campaignId ?? principal.campaignId}
+                sessionId={state?.sessionId ?? principal.sessionId}
+                onReturnToLobby={onReturnToLobby}
+              />
+            }
+            viewNavigation={
+              <nav className="topbar__nav" aria-label="Vistas principales">
+                <NavLink to="/dm">DM</NavLink>
+                <NavLink to="/display">Display</NavLink>
+                <NavLink to="/player">Jugador</NavLink>
+              </nav>
+            }
+            commands={
+              <>
+                <TableAccessControl
+                  campaignId={state?.campaignId ?? principal.campaignId}
+                  sessionId={state?.sessionId ?? principal.sessionId}
+                />
+                <BackupRestoreControl
+                  campaignId={state?.campaignId ?? principal.campaignId}
+                />
+                <TableDeviceControl
+                  device={device}
+                  socketLatencyMs={socketLatencyMs}
+                  socketRecovered={socketRecovered}
+                />
+                <button
+                  type="button"
+                  className="icon-button"
+                  title="Cerrar sesión"
+                  aria-label="Cerrar sesión"
+                  onClick={() => void onLogout()}
+                >
+                  <LogOut size={18} />
+                </button>
+              </>
+            }
           />
-          <button
-            type="button"
-            className="icon-button"
-            title="Cerrar sesión"
-            aria-label="Cerrar sesión"
-            onClick={() => void onLogout()}
-          >
-            <LogOut size={18} />
-          </button>
-        </div>
-      </header>
+        ) : (
+          <header className="topbar">
+            <div>
+              <span className="eyebrow">DM Interactive Table</span>
+              <h1>{displayTitle}</h1>
+            </div>
+            <div className="topbar__actions">
+              <nav className="topbar__nav" aria-label="Vistas principales">
+                <NavLink to="/dm">DM</NavLink>
+                <NavLink to="/display">Display</NavLink>
+                <NavLink to="/player">Jugador</NavLink>
+              </nav>
+              <TableDeviceControl
+                device={device}
+                socketLatencyMs={socketLatencyMs}
+                socketRecovered={socketRecovered}
+              />
+              <button
+                type="button"
+                className="icon-button"
+                title="Cerrar sesión"
+                aria-label="Cerrar sesión"
+                onClick={() => void onLogout()}
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
+          </header>
+        )}
 
-      <section className="workspace">
-        <aside className="control-panel">
+        <section className={`workspace${isDm ? ' dm-workspace' : ''}`}>
+          {isDm ? (
+            <DmSideNav
+              activeSection={activeDmSection}
+              collapsed={dmNavCollapsed}
+              onSelect={openDmSection}
+              onToggle={() => setDmNavCollapsed((current) => !current)}
+            />
+          ) : null}
+          <DmContextPanel
+            enabled={isDm}
+            activeSection={activeDmSection}
+            onClose={() => setDmContextOpen(false)}
+          >
+            {isDm ? (
+              <>
+                {activeDmSection === 'map' ? (
+                  <>
+                    <TokenInspector
+                      token={selectedToken}
+                      combatant={selectedCombatant}
+                      onCenter={() => handleCenterToken(selectedTokenId)}
+                      onClear={() => setSelectedTokenId(null)}
+                    />
+                    <QuickActionsPanel
+                      canStartCombat={!activeEncounter && publicTokens.length > 0}
+                      onStartCombat={handleEncounterStart}
+                      onRevealArea={handleRevealCenter}
+                      onNewNote={() => openDmSection('notes')}
+                      onSnapshot={handleShortcutSnapshot}
+                    />
+                  </>
+                ) : null}
+                {activeDmSection === 'characters' ? (
+                  <CharactersPanel
+                    tokens={scene?.tokens.filter((token) => token.type === 'player') ?? []}
+                    participants={dmWorkspace.players}
+                    onSelect={handleDmTokenSelect}
+                    onCenter={handleCenterToken}
+                  />
+                ) : null}
+                {activeDmSection === 'npcs' ? (
+                  <NpcPanel
+                    tokens={scene?.tokens.filter((token) => token.type === 'npc' || token.type === 'enemy') ?? []}
+                    npcName={npcName}
+                    npcRole={npcRole}
+                    enemyName={enemyName}
+                    enemyHp={enemyHp}
+                    status={entityStatus}
+                    onNpcNameChange={setNpcName}
+                    onNpcRoleChange={setNpcRole}
+                    onEnemyNameChange={setEnemyName}
+                    onEnemyHpChange={setEnemyHp}
+                    onCreateNpc={() => void handleCreateNpcToken()}
+                    onCreateEnemy={() => void handleCreateEnemyToken()}
+                    onSelect={handleDmTokenSelect}
+                    onCenter={handleCenterToken}
+                  />
+                ) : null}
+                {activeDmSection === 'combat' ? (
+                  <CombatPanel
+                    encounter={activeEncounter}
+                    tokens={publicTokens}
+                    onStart={handleEncounterStart}
+                    onAdvance={handleAdvanceTurn}
+                  />
+                ) : null}
+                {activeDmSection === 'notes' ? (
+                  <DmNotesPanel
+                    narrative={narrativeValue}
+                    onNarrativeChange={setDraftNarrative}
+                    onPublish={handleNarrativeSubmit}
+                  />
+                ) : null}
+                {activeDmSection === 'assets' ? (
+                  <AssetsPanel
+                    library={assetLibrary}
+                    type={assetType}
+                    name={assetName}
+                    url={assetUrl}
+                    status={assetStatus}
+                    onTypeChange={setAssetType}
+                    onNameChange={setAssetName}
+                    onUrlChange={setAssetUrl}
+                    onCreate={() => void handleCreateAsset()}
+                    onRefresh={() => {
+                      if (state?.campaignId) void loadAssets(state.campaignId)
+                    }}
+                  />
+                ) : null}
+                {activeDmSection === 'display' ? (
+                  <DisplayPanel
+                    connected={dmWorkspace.displays.length > 0}
+                    socketLatencyMs={socketLatencyMs}
+                    device={device}
+                  />
+                ) : null}
+                {activeDmSection === 'system' ? (
+                  <SystemPanel
+                    connected={connected}
+                    lastError={lastError || dmWorkspace.error}
+                    lastEvent={lastEvent}
+                    tableAccess={dmWorkspace.tableAccess}
+                    readiness={demoReadiness}
+                    device={device}
+                    version={APP_VERSION}
+                    onRefresh={() => {
+                      requestGameState()
+                      void dmWorkspace.refresh()
+                      void device.measureHttpLatency()
+                    }}
+                  />
+                ) : null}
+              </>
+            ) : null}
+
+            <DmAdvancedTools enabled={isDm}>
           <div className="panel-section">
             <span className={`status-dot ${connected ? 'is-online' : ''}`} />
             <div>
@@ -1477,17 +1806,6 @@ export function GameWorkspace({
               ) : null}
             </div>
           </div>
-
-          {isDm ? (
-            <HistoryControls
-              history={history}
-              undo={undoHistory}
-              redo={redoHistory}
-              createSnapshot={createSnapshot}
-              restoreSnapshot={restoreSnapshot}
-              deleteSnapshot={deleteSnapshot}
-            />
-          ) : null}
 
           <div className="panel-section">
             <span className="section-label">Campaña</span>
@@ -2757,34 +3075,59 @@ export function GameWorkspace({
               <p>{lastError}</p>
             </div>
           ) : null}
-        </aside>
+            </DmAdvancedTools>
+          </DmContextPanel>
 
-        <section className="stage-panel" aria-label="Escena activa">
-          {scene ? (
-            <Suspense fallback={<div className="empty-stage">Cargando mapa...</div>}>
-              <GameBoard
-                canMoveTokens={isDm}
-                canEditVision={isDm}
-                role={role}
-                scene={scene}
-                devicePreferences={device.preferences}
-                mapLayers={mapLayers}
-                visionEditMode={visionEditMode}
-                selectedOccluderId={selectedOccluderId}
-                selectedOccluderIds={selectedOccluderIds}
-                pendingVisionPoint={pendingVisionPoint}
-                onTokenMove={handleTokenMove}
-                onVisionCanvasPoint={handleVisionCanvasPoint}
-                onSelectOccluder={handleSelectOccluder}
-                onOccluderChange={handleBoardOccluderChange}
-                onDeleteOccluder={removeOccluderById}
+          {isDm ? (
+            <div className="dm-map-column">
+              <DmMapViewport
+                activeTool={dmMapTool}
+                fogEnabled={Boolean(experience?.fogOfWar.enabled)}
+                onToolChange={handleDmMapToolChange}
+                onToggleFog={handleToggleFog}
+                onCenterSelection={() => handleCenterToken(selectedTokenId)}
+                onFullscreen={device.toggleFullscreen}
+                onShowHelp={() => setShortcutHelpOpen(true)}
+              >
+                <section className="stage-panel" aria-label="Escena activa">
+                  {board}
+                </section>
+              </DmMapViewport>
+              <DmTimelineBar
+                history={history}
+                mapImageUrl={
+                  scene?.map.id === 'demo-map' ||
+                  scene?.map.imageUrl === '/assets/maps/demo-camp.png'
+                    ? demoMapImageUrl
+                    : scene?.map.imageUrl
+                }
+                undo={undoHistory}
+                redo={redoHistory}
+                createSnapshot={createSnapshot}
+                restoreSnapshot={restoreSnapshot}
+                deleteSnapshot={deleteSnapshot}
               />
-            </Suspense>
+            </div>
           ) : (
-            <div className="empty-stage">Conectando con la escena...</div>
+            <section className="stage-panel" aria-label="Escena activa">
+              {board}
+            </section>
           )}
         </section>
-      </section>
+
+        {isDm ? (
+          <DmSystemStatusBar
+            savedAt={state?.updatedAt}
+            lastEvent={lastEvent || tableStatus}
+            userName={principal.displayName}
+            version={APP_VERSION}
+          />
+        ) : null}
+        <DmShortcutHelp
+          open={isDm && shortcutHelpOpen}
+          onClose={() => setShortcutHelpOpen(false)}
+        />
+      </DmCommandCenter>
     </main>
   )
 }

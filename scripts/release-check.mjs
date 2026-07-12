@@ -49,9 +49,9 @@ const changelog = await readText('CHANGELOG.md')
 const implementation = await readText(
   'docs',
   'implementation',
-  'phase-2.0-table-device-experience.md',
+  'phase-2.0-dm-command-center.md',
 )
-assert.ok(readme.includes(`\`${expectedVersion} - Table Device Experience\``))
+assert.ok(readme.includes(`\`${expectedVersion} - DM Command Center\``))
 assert.ok(docsReadme.includes(`\`${expectedVersion}\``))
 assert.equal(
   changelog.match(/^## \[([^\]]+)\]/m)?.[1],

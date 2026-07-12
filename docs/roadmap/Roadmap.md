@@ -318,6 +318,17 @@ Estado: completado.
 
 Estado: completado.
 
+### 2.0.0-alpha.24 - DM Command Center
+
+- Shell operativo con topbar, navegación, mapa, contexto, timeline y status bar.
+- Mapa de escena real bajo las capas de cuadrícula, tokens, luz, visión y niebla.
+- Inspector y paneles contextuales conectados a la lógica existente.
+- Drawer de tableta, controles táctiles y atajos de teclado.
+- Herramientas avanzadas preservadas sin duplicar autoridad ni eventos Socket.IO.
+- Evidencia visual en 1366x768, 1920x1080 y 1024x768.
+
+Estado: completado.
+
 ### Siguiente versión - Player Token Ownership
 
 - Asignación explícita de personaje y token por el DM.

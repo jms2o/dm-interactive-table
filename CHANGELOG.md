@@ -2,6 +2,25 @@
 
 Los cambios relevantes del producto se registran en este archivo.
 
+## [2.0.0-alpha.24] - 2026-07-12
+
+### Añadido
+
+- DM Command Center con topbar operativa, navegación lateral, mapa dominante, inspector y timeline.
+- Paneles contextuales para personajes, NPCs, combate, notas, assets, display y sistema.
+- Selección y centrado de tokens conectados al canvas, con estado de combate cuando existe.
+- Mapa original de ruinas para la escena demo, renderizado bajo cuadrícula, luces, visión y niebla.
+- Atajos de teclado, ayuda accesible y persistencia del menú contraído.
+- Test estructural `test:command-center` y evidencia E2E del nuevo workspace.
+
+### Cambiado
+
+- Las herramientas previas permanecen disponibles en un panel avanzado plegable.
+- El panel contextual funciona como drawer en tableta horizontal.
+- Snapshots, undo y redo se trasladan a una línea de tiempo horizontal.
+- Finalizar una sesión solicita confirmación antes de revocar accesos.
+- La versión de producto, paquetes, OpenAPI y documentación avanza a `2.0.0-alpha.24`.
+
 ## [2.0.0-alpha.23] - 2026-07-11
 
 ### Añadido

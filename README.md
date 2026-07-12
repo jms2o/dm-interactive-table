@@ -4,9 +4,9 @@ Motor de campañas de rol con panel privado para el DM, mapa sincronizado para m
 
 ## Versión actual
 
-`2.0.0-alpha.23 - Table Device Experience`
+`2.0.0-alpha.24 - DM Command Center`
 
-Esta entrega añade perfiles TV/tableta/teléfono, calibración física, Wake Lock, safe areas, fullscreen/kiosk, diagnóstico de latencia y FPS, límites de assets, backups visibles y un gate de release completo. También endurece JWT, CSRF, observabilidad y revocación al cerrar sesión.
+Esta entrega convierte `/dm` en un centro de mando de fantasía oscura con mapa dominante, barra operativa, navegación contextual, inspector de tokens, paneles de campaña y timeline de snapshots. Reutiliza Socket.IO y los servicios existentes, conserva las herramientas avanzadas y adapta el flujo a laptop, Full HD y tableta horizontal.
 
 ## Inicio con Docker
 
@@ -52,7 +52,7 @@ npm run verify
 npm run test:e2e
 ```
 
-`verify` ejecuta build, lint, geometría de mapa/visión/cámara, seguridad, recuperación, workflow de sesiones, validación Prisma y el flujo integrado HTTP/Socket.IO. El E2E requiere Chromium de Playwright (`npx playwright install chromium`).
+`verify` ejecuta build, lint, estructura del Command Center, geometría de mapa/visión/cámara, seguridad, recuperación, workflow de sesiones, validación Prisma y el flujo integrado HTTP/Socket.IO. El E2E requiere Chromium de Playwright (`npx playwright install chromium`).
 
 ## Documentación
 

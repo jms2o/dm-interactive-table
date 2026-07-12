@@ -16,8 +16,24 @@ test('DM runs a session from lobby and a player reconnects to the same scene', a
   await expect(page.getByTestId('session-list')).toContainText('Sesion Demo')
   await page.getByRole('button', { name: 'Preparar' }).click()
 
-  await expect(page.getByRole('heading', { name: 'Panel del DM' })).toBeVisible()
-  await expect(page.getByText('Conectado', { exact: true })).toBeVisible()
+  await expect(page.locator('.dm-command-center')).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Inspector del mapa' }),
+  ).toBeVisible()
+  await expect(page.locator('.dm-map-viewport canvas').first()).toBeVisible()
+
+  await page.getByRole('button', { name: 'Personajes' }).click()
+  await page
+    .locator('.dm-entity-row__select')
+    .filter({ hasText: 'Aelar' })
+    .click()
+  await expect(page.getByRole('heading', { name: 'Aelar' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Ocultar' })).toBeDisabled()
+  await testInfo.attach('dm-command-center', {
+    body: await page.screenshot({ fullPage: true }),
+    contentType: 'image/png',
+  })
+
   await page.getByRole('button', { name: 'Mesa' }).click()
   await page.getByRole('button', { name: 'Generar código' }).click()
 
@@ -116,9 +132,8 @@ test('DM runs a session from lobby and a player reconnects to the same scene', a
     contentType: 'image/png',
   })
 
-  await page.getByLabel('Nombre del snapshot').fill('Antes del portal')
-  await page.getByRole('button', { name: 'Crear snapshot' }).click()
-  await expect(page.getByText('Antes del portal', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Tomar snapshot' }).click()
+  await expect(page.locator('.dm-snapshot')).toHaveCount(1)
 
   await page.getByRole('button', { name: 'Respaldos' }).click()
   const downloadPromise = page.waitForEvent('download')
@@ -133,6 +148,7 @@ test('DM runs a session from lobby and a player reconnects to the same scene', a
   await expect(page.getByText('Copia restaurada', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Cerrar', exact: true }).click()
 
+  page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Finalizar' }).click()
   await expect(
     player.getByRole('heading', { name: 'La mesa quedó cerrada' }),
