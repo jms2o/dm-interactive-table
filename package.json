@@ -44,7 +44,7 @@
   "author": "Joel Martinez",
   "license": "MIT",
   "devDependencies": {
-    "@hono/node-server": "1.19.13",
+    "@hono/node-server": "2.0.10",
     "@playwright/test": "^1.53.2",
     "concurrently": "^9.0.0",
     "mathjs": "15.2.0",
